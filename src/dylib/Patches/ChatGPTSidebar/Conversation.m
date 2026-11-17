@@ -49,6 +49,7 @@ static NSString *const DPChatInstructions = @"You are the chat assistant in the 
 
 - (void)serviceChanged:(NSNotification *)note {
     DPChatService *service = DPChatService.shared;
+    if (self.restoring) [self restore];
     if (!self.queued) return;
     if (service.signedIn) {
         NSString *prompt = self.queued;
@@ -79,22 +80,31 @@ static NSString *const DPChatInstructions = @"You are the chat assistant in the 
     DPChatClient *client = DPChatService.shared.client;
     __weak DPChatConversation *weak = self;
     if (!self.threadID) {
-        NSDictionary *params = @{@"cwd": [DPChatHome() stringByAppendingPathComponent:@"workspace"], @"sandbox": @"read-only",
-                                 @"approvalPolicy": @"never", @"ephemeral": @YES, @"baseInstructions": DPChatInstructions};
+        // Not ephemeral, so Codex keeps the chat on disk and it survives Dia restarting.
+        NSMutableDictionary *params = [self.threadParams mutableCopy];
+        params[@"ephemeral"] = @NO;
         return [client request:@"thread/start" params:params done:^(NSDictionary *result, NSString *error) {
             if (!weak || weak.generation != generation) return;
             NSString *thread = [result[@"thread"] isKindOfClass:NSDictionary.class] ? result[@"thread"][@"id"] : nil;
             if (error || !thread) return [weak fail:error ?: @"ChatGPT didn't start a chat. Try again."];
             weak.threadID = thread;
+            weak.resumed = YES;
+            [weak saveThread];
             [weak turn:input generation:generation];
         }];
     }
+    if (!self.resumed) return [self resume:^{ if (weak.generation == generation) [weak turn:input generation:generation]; }];
     [client request:@"turn/start" params:@{@"threadId": self.threadID, @"input": @[@{@"type": @"text", @"text": input}]}
                done:^(NSDictionary *result, NSString *error) {
                    if (!weak || weak.generation != generation) return;
                    if (error) return [weak fail:error];
                    weak.turnID = [result[@"turn"] isKindOfClass:NSDictionary.class] ? result[@"turn"][@"id"] : nil;
                }];
+}
+
+- (NSDictionary *)threadParams {
+    return @{@"cwd": [DPChatHome() stringByAppendingPathComponent:@"workspace"], @"sandbox": @"read-only",
+             @"approvalPolicy": @"never", @"baseInstructions": DPChatInstructions};
 }
 
 - (void)stop {
@@ -115,6 +125,8 @@ static NSString *const DPChatInstructions = @"You are the chat assistant in the 
     [self stop];
     self.generation++;
     self.threadID = self.sharedPages = nil;
+    self.resumed = self.restoring = NO;
+    [self saveThread];
     [self.messages removeAllObjects];
     [self notify:NO];
 }

@@ -35,7 +35,8 @@ extern NSNotificationName const DPChatServiceEvent;  // userInfo: method, params
 @end
 
 @interface DPChatConversation (Tabs)
-+ (instancetype)forTab:(NSString *)tab;
+// Saved with Codex's thread ID, so it survives Dia restarting.
++ (instancetype)forTab:(NSString *)tab window:(NSWindow *)window;
 // Drops the chats of tabs that were closed.
 + (void)forgetClosedTabs;
 @end

@@ -7,6 +7,7 @@
 @property(weak) NSView *panel, *container;
 @property(nonatomic, weak) NSView *composer;
 @property(weak) NSWindow *window;
+@property(copy) NSString *tab;
 @property(nonatomic) NSView *wrapper;  // Strong, so its observer is always removed.
 @property DPChatTranscript *transcript;
 @property DPChatConversation *conversation;
@@ -100,10 +101,13 @@ static void DPChatAttach(NSViewController *sidebar) {
     if (!tab) return;
     DPChatHost *previous = DPGet(sidebar, &gHostKey), *host = DPGet(container, &gHostKey);
     if (host && host.window != container.window) DPChatDetach(host), host = nil;  // Dia moved the panel to another window.
-    DPChatConversation *chat = [DPChatConversation forTab:tab];
-    // Dia builds a new chat view in the same sidebar only when it starts a new chat (button, menu or shortcut).
-    if (previous && previous != host && previous.window == container.window) [chat reset];
-    if (previous && previous != host) DPChatDetach(previous);
+    DPChatConversation *chat = [DPChatConversation forTab:tab window:container.window];
+    // A window has one sidebar, and each tab keeps its own chat view in it, so another tab's view stays as it is.
+    // A new chat view for the same tab means Dia started a new chat (button, menu or shortcut).
+    if (previous && previous != host && [previous.tab isEqual:tab]) {
+        if (previous.window == container.window) [chat reset];
+        DPChatDetach(previous);
+    }
     if (!host) {
         host = [DPChatHost new];
         host.window = container.window;
@@ -115,7 +119,7 @@ static void DPChatAttach(NSViewController *sidebar) {
         if (!DPTesting) [DPChatService.shared connect];
     }
     if (host.conversation != chat) host.conversation = host.transcript.conversation = chat;
-    host.sidebar = sidebar, host.panel = panel, host.composer = composer;
+    host.sidebar = sidebar, host.panel = panel, host.composer = composer, host.tab = tab;
     DPSet(sidebar, &gHostKey, host);
     DPSet(panel, &gHostKey, host);
     NSArray<NSView *> *subviews = container.subviews;
