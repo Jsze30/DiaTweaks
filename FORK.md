@@ -25,7 +25,7 @@ Instead, the tweak:
 - Catches Return and the Send button in Dia's composer, takes the text, and clears the field.
 - Sends the text to a local `codex app-server` process, which talks to ChatGPT with your Codex login.
 - Streams the reply into the transcript, rendered from Markdown.
-- Keeps one chat per tab, drops it when the tab closes, and resets it when you press Dia's New chat button.
+- Keeps one chat per tab, saved with its Codex thread so it comes back after Dia restarts. Only closing the tab or Dia's New chat clears it.
 - Stops a reply on Escape.
 
 Codex runs with tools, shell, web search, MCP servers and history all turned off, so it can only chat.
@@ -38,7 +38,7 @@ Everything lives in `src/dylib/Patches/ChatGPTSidebar/`:
 - `ChatGPTSidebar.m`: the tweak's settings entry and its self-check.
 - `Host.m`, `Input.m`, `Hints.m`: attach to Dia's sidebar, catch sends from its composer, and clear Dia's hints.
 - `Service.m`, `Client.m`, `Protocol.m`, `Runtime.m`: start and talk to `codex app-server`.
-- `Conversation.m`, `Events.m`, `Tabs.m`: one chat per tab, and the streamed reply events.
+- `Conversation.m`, `Events.m`, `Tabs.m`, `Restore.m`: one chat per tab, the streamed reply events, and bringing a saved chat back.
 - `Transcript.m`, `Rows.m`, `Scroll.m`, `Empty.m`: the native message list.
 - `Card.m`, `Copy.m`, `Tip.m`, `Accent.m`, `Hover.m`, `Icons.m`: the shared page's card, the Copy button, the new-chat tips, the space's bubble color, and the hover buttons and Phosphor icons they use.
 - `Markdown.m`, `Inline.m`: Markdown rendering.
