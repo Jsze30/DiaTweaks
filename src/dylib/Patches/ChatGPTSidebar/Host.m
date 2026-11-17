@@ -100,6 +100,9 @@ static void DPChatAttach(NSViewController *sidebar) {
     if (!tab) return;
     DPChatHost *previous = DPGet(sidebar, &gHostKey), *host = DPGet(container, &gHostKey);
     if (host && host.window != container.window) DPChatDetach(host), host = nil;  // Dia moved the panel to another window.
+    DPChatConversation *chat = [DPChatConversation forTab:tab];
+    // Dia builds a new chat view in the same sidebar only when it starts a new chat (button, menu or shortcut).
+    if (previous && previous != host && previous.window == container.window) [chat reset];
     if (previous && previous != host) DPChatDetach(previous);
     if (!host) {
         host = [DPChatHost new];
@@ -111,7 +114,6 @@ static void DPChatAttach(NSViewController *sidebar) {
         [gHosts addObject:host];
         if (!DPTesting) [DPChatService.shared connect];
     }
-    DPChatConversation *chat = [DPChatConversation forTab:tab];
     if (host.conversation != chat) host.conversation = host.transcript.conversation = chat;
     host.sidebar = sidebar, host.panel = panel, host.composer = composer;
     DPSet(sidebar, &gHostKey, host);
@@ -131,6 +133,12 @@ static void DPChatSidebar_viewWillLayout(NSViewController *self, SEL _cmd) {
     DPCallOriginal(DPChatSidebar_viewWillLayout, self);
     [gSidebars addObject:self];
     DPChatAttach(self);
+}
+
+// Dia's new chat view doesn't lay out the sidebar again, so attach when its composer shows up.
+static void DPChatComposer_viewDidMoveToWindow(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPChatComposer_viewDidMoveToWindow, self);
+    if (self.window && DPChatGPTSidebar.on) dispatch_async(dispatch_get_main_queue(), ^{ DPChatApplyHost(); });
 }
 
 DPChatConversation *DPChatConversationFor(NSView *view) {
@@ -162,6 +170,7 @@ void DPChatInstallHost(void) {
     gSidebars = [NSHashTable weakObjectsHashTable];
     gHosts = [NSHashTable weakObjectsHashTable];
     DPHook(DPChatSidebarClass, @selector(viewWillLayout), (IMP)DPChatSidebar_viewWillLayout);
+    DPHook(DPDiaCommandBar, @selector(viewDidMoveToWindow), (IMP)DPChatComposer_viewDidMoveToWindow);
     DPChatInstallInput();
     DPChatInstallHints();
     DPChatInstallTabs();
