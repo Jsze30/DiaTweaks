@@ -37,37 +37,57 @@ static NSDictionary *DPChatPageResult(id result) {
 
 static NSString *DPChatString(id value) { return [value isKindOfClass:NSString.class] ? value : @""; }
 
-void DPChatPage(NSWindow *window, void (^done)(NSString *url, NSString *text)) {
-    __block BOOL finished = NO;
-    void (^finish)(NSString *, NSString *) = ^(NSString *url, NSString *text) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (finished) return;
-            finished = YES;
-            done(url, text);
-        });
-    };
+// The open page at `url`, in any window: a tab can be open in several, and they all show the same page.
+static id DPChatContents(NSURL *url) {
+    for (NSWindow *window in NSApp.windows) {
+        id browser = DPBrowserOfWindow(window);
+        for (id contents in browser ? DPTrackedContents(browser) : @[]) {
+            id address = [contents respondsToSelector:@selector(url)] ? DPMsg(contents, @selector(url)) : nil;
+            NSString *text = [address isKindOfClass:NSURL.class] ? [address absoluteString] : DPChatString(address);
+            if ([text isEqual:url.absoluteString]) return contents;
+        }
+    }
+    return nil;
+}
 
-    id browser = window ? DPBrowserOfWindow(window) : nil;
-    long long active = browser ? DPActiveSession(browser) : 0;
-    id page = nil;
-    if (active > 0)
-        for (id candidate in DPTrackedContents(browser))
-            if (DPSessionOf(candidate) == active) { page = candidate; break; }
+static void DPChatReadPage(NSURL *url, void (^done)(NSString *text)) {
+    id page = [@[ @"https", @"http" ] containsObject:url.scheme.lowercaseString] ? DPChatContents(url) : nil;
     SEL execute = @selector(executeJavascript:completion:);
-    id address = [page respondsToSelector:@selector(url)] ? DPMsg(page, @selector(url)) : nil;
-    NSURL *url = [address isKindOfClass:NSURL.class] ? address : [address isKindOfClass:NSString.class] ? [NSURL URLWithString:address] : nil;
-    if (![page respondsToSelector:execute] || ![@[ @"https", @"http" ] containsObject:url.scheme.lowercaseString]) return finish(nil, nil);
-
-    // Never hold up the message: after this, it goes without the page.
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ finish(nil, nil); });
+    if (![page respondsToSelector:execute]) return done(nil);
     ((void (*)(id, SEL, NSString *, id))objc_msgSend)(page, execute, DPChatPageScript, ^(id result, BOOL ok) {
         NSDictionary *data = ok ? DPChatPageResult(result) : nil;
         NSString *text = DPChatString(data[@"text"]);
-        if (!data) return finish(nil, nil);
+        if (!data) return done(nil);
         if (text.length > DPChatPageLimit) text = [text substringToIndex:DPChatPageLimit];
         NSString *pageURL = DPChatString(data[@"url"]).length ? data[@"url"] : url.absoluteString;
-        NSMutableString *context = [NSMutableString stringWithFormat:@"Title: %@\nURL: %@", DPChatString(data[@"title"]), pageURL];
+        NSMutableString *context = [NSMutableString stringWithFormat:@"<page>\nTitle: %@\nURL: %@", DPChatString(data[@"title"]), pageURL];
         if (text.length) [context appendFormat:@"\n%@: %@", [data[@"selection"] boolValue] ? @"Selected text" : @"Page text", text];
-        finish(pageURL, context);
+        [context appendString:@"\n</page>"];
+        done(context);
     });
+}
+
+void DPChatPages(NSArray<NSURL *> *urls, void (^done)(NSString *key, NSString *text)) {
+    NSString *key = [[urls valueForKey:@"absoluteString"] componentsJoinedByString:@"\n"];
+    NSMutableArray *texts = [NSMutableArray new];
+    for (NSUInteger i = 0; i < urls.count; i++) [texts addObject:@""];
+    __block NSUInteger left = urls.count;
+    __block BOOL finished = NO;
+    void (^finish)(void) = ^{
+        if (finished) return;
+        finished = YES;
+        NSString *text = [[texts filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"length > 0"]] componentsJoinedByString:@"\n\n"];
+        done(key, text);
+    };
+    if (!left) return dispatch_async(dispatch_get_main_queue(), finish);
+    // Never hold up the message: after this, it goes with the pages read so far.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), finish);
+    [urls enumerateObjectsUsingBlock:^(NSURL *url, NSUInteger i, BOOL *stop) {
+        DPChatReadPage(url, ^(NSString *text) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (text) texts[i] = text;
+                if (--left == 0) finish();
+            });
+        });
+    }];
 }

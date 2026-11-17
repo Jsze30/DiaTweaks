@@ -23,15 +23,21 @@ extern NSNotificationName const DPChatServiceEvent;  // userInfo: method, params
 @property(copy) NSString *text;
 @end
 
-// One chat per window, so it survives Dia rebuilding the sidebar.
+// One chat per tab, kept by the tab's ID so it survives Dia rebuilding the sidebar.
 @interface DPChatConversation : NSObject
 @property(readonly) NSMutableArray<DPChatMessage *> *messages;
 @property(readonly) BOOL busy;
 @property(copy) void (^changed)(BOOL streaming);
-+ (instancetype)forWindow:(NSWindow *)window;
-- (void)send:(NSString *)prompt;
+// `pages` are the web addresses of the tabs attached to the composer.
+- (void)send:(NSString *)prompt pages:(NSArray<NSURL *> *)pages;
 - (void)stop;
 - (void)reset;
+@end
+
+@interface DPChatConversation (Tabs)
++ (instancetype)forTab:(NSString *)tab;
+// Drops the chats of tabs that were closed.
++ (void)forgetClosedTabs;
 @end
 
 @interface DPChatTranscript : NSView
@@ -43,6 +49,8 @@ extern NSNotificationName const DPChatServiceEvent;  // userInfo: method, params
 
 void DPChatInstallHost(void);
 void DPChatApplyHost(void);
-void DPChatPage(NSWindow *window, void (^done)(NSString *url, NSString *text));
+// The text of each page in <page> tags, and a key that changes when the pages do.
+void DPChatPages(NSArray<NSURL *> *urls, void (^done)(NSString *key, NSString *text));
+NSArray<NSURL *> *DPChatAttachedURLs(NSView *chips);
 NSAttributedString *DPChatMarkdown(NSString *markdown, CGFloat size);
 NSArray<NSView *> *DPChatSettings(void);

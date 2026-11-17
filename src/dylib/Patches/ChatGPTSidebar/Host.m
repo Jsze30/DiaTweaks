@@ -1,4 +1,5 @@
 #import "Host.h"
+#import "Patches/CommandBar/Tabs.h"
 
 // Swaps only Dia's web-rendered message list for our transcript, keeping its header and composer.
 @interface DPChatHost : NSObject
@@ -72,6 +73,7 @@ static void DPChatDetach(DPChatHost *host) {
     host.composer = nil;
     for (id owner in @[ host.sidebar ?: NSNull.null, host.panel ?: NSNull.null, host.container ?: NSNull.null ])
         if (owner != NSNull.null && DPGet(owner, &gHostKey) == host) DPSet(owner, &gHostKey, nil);
+    DPChatClearHints(host.container);
     [gHosts removeObject:host];
 }
 
@@ -94,20 +96,23 @@ static void DPChatAttach(NSViewController *sidebar) {
     if (!DPChatGPTSidebar.on || !sidebar.viewLoaded) return;
     NSView *panel = nil, *container = nil, *wrapper = nil, *composer = nil;
     if (!DPChatResolve(sidebar.view, &panel, &container, &wrapper, &composer) || !container.window) return;
+    NSString *tab = DPActiveTabID(container.window);  // The sidebar on screen is the front tab's.
+    if (!tab) return;
     DPChatHost *previous = DPGet(sidebar, &gHostKey), *host = DPGet(container, &gHostKey);
     if (host && host.window != container.window) DPChatDetach(host), host = nil;  // Dia moved the panel to another window.
     if (previous && previous != host) DPChatDetach(previous);
     if (!host) {
         host = [DPChatHost new];
         host.window = container.window;
-        host.conversation = [DPChatConversation forWindow:container.window];
-        host.transcript = [[DPChatTranscript alloc] initWithConversation:host.conversation];
+        host.transcript = [[DPChatTranscript alloc] initWithConversation:nil];
         host.transcript.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         host.container = container;
         DPSet(container, &gHostKey, host);
         [gHosts addObject:host];
         if (!DPTesting) [DPChatService.shared connect];
     }
+    DPChatConversation *chat = [DPChatConversation forTab:tab];
+    if (host.conversation != chat) host.conversation = host.transcript.conversation = chat;
     host.sidebar = sidebar, host.panel = panel, host.composer = composer;
     DPSet(sidebar, &gHostKey, host);
     DPSet(panel, &gHostKey, host);
@@ -119,6 +124,7 @@ static void DPChatAttach(NSViewController *sidebar) {
     if (!NSEqualRects(host.transcript.frame, container.bounds)) host.transcript.frame = container.bounds;
     [host setWrapper:wrapper restore:YES];
     [host enforce];
+    DPChatClearHints(container);
 }
 
 static void DPChatSidebar_viewWillLayout(NSViewController *self, SEL _cmd) {
@@ -157,6 +163,8 @@ void DPChatInstallHost(void) {
     gHosts = [NSHashTable weakObjectsHashTable];
     DPHook(DPChatSidebarClass, @selector(viewWillLayout), (IMP)DPChatSidebar_viewWillLayout);
     DPChatInstallInput();
+    DPChatInstallHints();
+    DPChatInstallTabs();
     DPOnQuit(^{ for (DPChatHost *host in gHosts.allObjects) DPChatDetach(host); });
     [NSNotificationCenter.defaultCenter addObserverForName:NSWindowWillCloseNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
         for (DPChatHost *host in gHosts.allObjects)
