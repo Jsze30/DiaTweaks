@@ -3,8 +3,8 @@
 @interface DPChatConversation ()
 @property(readwrite) NSMutableArray<DPChatMessage *> *messages;
 @property(readwrite) BOOL busy;
-@property(weak) NSWindow *window;
-@property(copy) NSString *threadID, *turnID, *queued, *sharedURL;
+@property(copy) NSString *threadID, *turnID, *queued, *sharedPages;
+@property(copy) NSArray<NSURL *> *pages;
 @property NSUInteger generation;
 @end
 

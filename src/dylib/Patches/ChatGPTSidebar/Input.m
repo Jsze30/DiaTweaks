@@ -28,7 +28,8 @@ static void DPChatSubmit(NSView *composer, NSTextView *textView) {
     if (conversation.busy) return;
     [textView setString:@""];
     [textView didChangeText];  // So Dia updates its send button.
-    [conversation send:text];
+    NSView *chips = DPFindView(composer, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaChatAttachments); });
+    [conversation send:text pages:chips ? DPChatAttachedURLs(chips) : @[]];
 }
 
 static NSEvent *DPChatKeyDown(NSEvent *event) {
@@ -61,8 +62,10 @@ static NSEvent *DPChatMouseDown(NSEvent *event) {
             DPChatSubmit(composer, DPChatTextView(composer));
             return nil;  // Dia's button sends in mouseDown, so it must not see this click.
         }
-        if (DPHasLabel(view, @"New chat")) {
-            [DPChatConversationFor(view) reset];
+        // Dia's New chat button doesn't hit-test itself, so find it under the click.
+        if (DPIsKind(view, DPDiaChatHeader)) {
+            NSView *button = DPFindView(view, ^BOOL(NSView *sub) { return DPHasLabel(sub, @"New chat"); });
+            if (button && NSPointInRect([button convertPoint:event.locationInWindow fromView:nil], button.bounds)) [DPChatConversationFor(view) reset];
             return event;  // Dia resets its own chat too.
         }
     }

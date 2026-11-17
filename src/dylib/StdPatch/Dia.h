@@ -65,6 +65,8 @@
 #define DPDiaTabGroupBackground "_TtCC5TabUI16TabGroupCellViewP33_6B047B569AD47EBB5C3E7DC66393AFEF23ContainerBackgroundView"
 #define DPDiaTabShape           "_TtC5TabUIP33_903BE4B7F5DFD8B21A7A465D1A9EF8E412TabShapeView"
 #define DPDiaChatUsage          "_TtC15BoostCommandBar13ChatUsageView"
+#define DPDiaChatHints          "_TtC16SupertabFrontend8HintView"
+#define DPDiaChatAttachments    "_TtC11Attachments24AttachmentCollectionView"
 #define DPDiaStatusText         "_TtC10StatusText14StatusTextView"
 #define DPDiaDownloadsMenu      "_TtC15DownloadsButton27DownloadsMenuViewController"
 #define DPDiaReloadNudge        "_TtC13NavigationBar39AdBlockReloadNudgeContentViewController"

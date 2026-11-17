@@ -90,6 +90,9 @@ static const CGFloat DPChatSide = 16, DPChatGap = 16, DPChatTop = 12;
     if (self.window) [self reload];
 }
 
+// Dia animates the container's subviews to sizes it picked before the container settled, so always fill it.
+- (void)setFrameSize:(NSSize)size { [super setFrameSize:self.superview ? self.superview.bounds.size : size]; }
+
 - (void)serviceChanged {
     [_empty update];
     self.needsLayout = YES;
