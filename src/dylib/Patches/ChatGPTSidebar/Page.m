@@ -38,16 +38,22 @@ static NSDictionary *DPChatPageResult(id result) {
 static NSString *DPChatString(id value) { return [value isKindOfClass:NSString.class] ? value : @""; }
 
 // The open page at `url`, in any window: a tab can be open in several, and they all show the same page.
+// A favorite's chip keeps the favorite's saved URL (calendar.google.com) while its page moves on
+// (calendar.google.com/calendar/u/0/r), so failing an exact match, take the same site's page, the one on screen first.
 static id DPChatContents(NSURL *url) {
+    id site = nil;
     for (NSWindow *window in NSApp.windows) {
         id browser = DPBrowserOfWindow(window);
         for (id contents in browser ? DPTrackedContents(browser) : @[]) {
             id address = [contents respondsToSelector:@selector(url)] ? DPMsg(contents, @selector(url)) : nil;
-            NSString *text = [address isKindOfClass:NSURL.class] ? [address absoluteString] : DPChatString(address);
-            if ([text isEqual:url.absoluteString]) return contents;
+            NSURL *page = [address isKindOfClass:NSURL.class] ? address : [NSURL URLWithString:DPChatString(address)];
+            if ([page.absoluteString isEqual:url.absoluteString]) return contents;
+            if (!url.host.length || [page.host caseInsensitiveCompare:url.host] != NSOrderedSame) continue;
+            BOOL shown = [contents respondsToSelector:@selector(visibility)] && ((NSInteger (*)(id, SEL))objc_msgSend)(contents, @selector(visibility)) == 2;
+            if (!site || shown) site = contents;
         }
     }
-    return nil;
+    return site;
 }
 
 static void DPChatReadPage(NSURL *url, void (^done)(NSString *text)) {
