@@ -1,4 +1,5 @@
 #import "Host.h"
+#import "Patches/CommandBar/Tabs.h"
 
 // Sends what's typed in Dia's own composer to ChatGPT instead of Dia's chat.
 
@@ -28,8 +29,11 @@ static void DPChatSubmit(NSView *composer, NSTextView *textView) {
     if (conversation.busy) return;
     [textView setString:@""];
     [textView didChangeText];  // So Dia updates its send button.
+    // Once Dia's own chat in this sidebar has messages, Dia stops showing the tab's chip but still means the tab.
     NSView *chips = DPFindView(composer, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaChatAttachments); });
-    [conversation send:text pages:chips ? DPChatAttachedURLs(chips) : @[]];
+    NSString *tab = [DPScriptTab(composer.window, DPActiveTabID(composer.window)) valueForKey:@"URL"];
+    NSURL *url = tab.length ? [NSURL URLWithString:tab] : nil;
+    [conversation send:text pages:chips ? DPChatAttachedURLs(chips) : url ? @[ url ] : @[]];
 }
 
 static NSEvent *DPChatKeyDown(NSEvent *event) {
