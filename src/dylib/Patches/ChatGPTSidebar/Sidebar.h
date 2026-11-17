@@ -18,9 +18,16 @@ extern DPPatch DPChatGPTSidebar;
 extern NSNotificationName const DPChatServiceDidChange;
 extern NSNotificationName const DPChatServiceEvent;  // userInfo: method, params
 
+// A web page read for the chat; `text` is what ChatGPT gets, in <page> tags.
+@interface DPChatPage : NSObject
+@property(copy) NSString *url, *title, *text;
+@property NSImage *icon;
+@end
+
 @interface DPChatMessage : NSObject
 @property BOOL fromUser, failed, pending;
 @property(copy) NSString *text;
+@property DPChatPage *page;  // the first page sent along with this message
 @end
 
 // One chat per tab, kept by the tab's ID so it survives Dia rebuilding the sidebar.
@@ -49,8 +56,8 @@ extern NSNotificationName const DPChatServiceEvent;  // userInfo: method, params
 
 void DPChatInstallHost(void);
 void DPChatApplyHost(void);
-// The text of each page in <page> tags, and a key that changes when the pages do.
-void DPChatPages(NSArray<NSURL *> *urls, void (^done)(NSString *key, NSString *text));
+// The pages that could be read, in order, and a key that changes when the URLs do.
+void DPChatPages(NSArray<NSURL *> *urls, void (^done)(NSString *key, NSArray<DPChatPage *> *pages));
 NSArray<NSURL *> *DPChatAttachedURLs(NSView *chips);
 NSAttributedString *DPChatMarkdown(NSString *markdown, CGFloat size);
 NSArray<NSView *> *DPChatSettings(void);

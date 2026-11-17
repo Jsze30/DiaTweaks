@@ -63,13 +63,16 @@ static NSString *const DPChatInstructions = @"You are the chat assistant in the 
 - (void)start:(NSString *)prompt {
     NSUInteger generation = self.generation;
     __weak DPChatConversation *weak = self;
-    DPChatPages(self.pages, ^(NSString *key, NSString *pages) {
+    DPChatMessage *asked = [self.messages filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"fromUser == YES"]].lastObject;
+    DPChatPages(self.pages, ^(NSString *key, NSArray<DPChatPage *> *pages) {
         if (!weak || weak.generation != generation || !weak.busy) return;
         NSString *input = prompt;
         // Share the same pages once per chat, until the user attaches others.
-        if (pages.length && ![key isEqual:weak.sharedPages]) {
+        if (pages.count && ![key isEqual:weak.sharedPages]) {
             weak.sharedPages = key;
-            input = [NSString stringWithFormat:@"%@\n\n%@", prompt, pages];
+            asked.page = pages.firstObject;
+            [weak notify:NO];
+            input = [NSString stringWithFormat:@"%@\n\n%@", prompt, [[pages valueForKey:@"text"] componentsJoinedByString:@"\n\n"]];
         }
         [weak turn:input generation:generation];
     });

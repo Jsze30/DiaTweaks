@@ -1,7 +1,7 @@
 #import "Transcript.h"
 
-static NSFont *DPChatFont(CGFloat size, BOOL bold, BOOL italic) {
-    NSFont *font = [NSFont systemFontOfSize:size weight:bold ? NSFontWeightSemibold : NSFontWeightRegular];
+static NSFont *DPChatFont(CGFloat size, NSFontWeight weight, BOOL italic) {
+    NSFont *font = [NSFont systemFontOfSize:size weight:weight];
     if (!italic) return font;
     NSFontDescriptor *slanted = [font.fontDescriptor fontDescriptorWithSymbolicTraits:font.fontDescriptor.symbolicTraits | NSFontDescriptorTraitItalic];
     return [NSFont fontWithDescriptor:slanted size:size] ?: font;
@@ -9,9 +9,9 @@ static NSFont *DPChatFont(CGFloat size, BOOL bold, BOOL italic) {
 
 NSColor *DPChatCodeFill(void) { return [NSColor.labelColor colorWithAlphaComponent:0.06]; }
 
-NSAttributedString *DPChatInline(NSString *text, CGFloat size, BOOL bold, NSDictionary *base) {
+NSAttributedString *DPChatInline(NSString *text, CGFloat size, NSFontWeight weight, NSDictionary *base) {
     NSMutableDictionary *plain = [base mutableCopy];
-    plain[NSFontAttributeName] = DPChatFont(size, bold, NO);
+    plain[NSFontAttributeName] = DPChatFont(size, weight, NO);
     static NSCharacterSet *marks;
     static NSAttributedStringMarkdownParsingOptions *options;
     static NSCache<NSString *, NSAttributedString *> *cache;
@@ -36,9 +36,9 @@ NSAttributedString *DPChatInline(NSString *text, CGFloat size, BOOL bold, NSDict
         NSInlinePresentationIntent intent = [attributes[NSInlinePresentationIntentAttributeName] unsignedIntegerValue];
         NSMutableDictionary *styled = [plain mutableCopy];
         if (intent & NSInlinePresentationIntentCode) {
-            styled[NSFontAttributeName] = [NSFont monospacedSystemFontOfSize:size - 1 weight:bold ? NSFontWeightSemibold : NSFontWeightRegular];
+            styled[NSFontAttributeName] = [NSFont monospacedSystemFontOfSize:size - 1 weight:weight];
             styled[NSBackgroundColorAttributeName] = DPChatCodeFill();
-        } else styled[NSFontAttributeName] = DPChatFont(size, bold || (intent & NSInlinePresentationIntentStronglyEmphasized),
+        } else styled[NSFontAttributeName] = DPChatFont(size, intent & NSInlinePresentationIntentStronglyEmphasized ? MAX(weight, NSFontWeightSemibold) : weight,
                                                         intent & NSInlinePresentationIntentEmphasized);
         if (intent & NSInlinePresentationIntentStrikethrough) styled[NSStrikethroughStyleAttributeName] = @(NSUnderlineStyleSingle);
         if (attributes[NSLinkAttributeName]) styled[NSLinkAttributeName] = attributes[NSLinkAttributeName];
