@@ -77,12 +77,16 @@ static NSString *const DPChatInstructions = @"You are the chat assistant in the 
 - (void)start:(NSString *)prompt {
     NSUInteger generation = self.generation;
     __weak DPChatConversation *weak = self;
-    DPChatPage(self.window, ^(NSString *url, NSString *page) {
+    DPChatMessage *asked = [self.messages filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"fromUser == YES"]].lastObject;
+    DPChatPage(self.window, ^(NSString *url, NSString *title, NSImage *icon, NSString *page) {
         if (!weak || weak.generation != generation || !weak.busy) return;
         NSString *input = prompt;
         // Share a page once per chat until the user moves to another one.
         if (page.length && ![url isEqual:weak.sharedURL]) {
-            weak.sharedURL = url;
+            weak.sharedURL = asked.pageURL = url;
+            asked.pageTitle = title;
+            asked.pageIcon = icon;
+            [weak notify:NO];
             input = [NSString stringWithFormat:@"%@\n\n<current_page>\n%@\n</current_page>", prompt, page];
         }
         [weak turn:input generation:generation];

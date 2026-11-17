@@ -21,6 +21,8 @@ extern NSNotificationName const DPChatServiceEvent;  // userInfo: method, params
 @interface DPChatMessage : NSObject
 @property BOOL fromUser, failed, pending;
 @property(copy) NSString *text;
+@property(copy) NSString *pageURL, *pageTitle;  // the page sent along with this message
+@property NSImage *pageIcon;
 @end
 
 // One chat per window, so it survives Dia rebuilding the sidebar.
@@ -43,6 +45,6 @@ extern NSNotificationName const DPChatServiceEvent;  // userInfo: method, params
 
 void DPChatInstallHost(void);
 void DPChatApplyHost(void);
-void DPChatPage(NSWindow *window, void (^done)(NSString *url, NSString *text));
+void DPChatPage(NSWindow *window, void (^done)(NSString *url, NSString *title, NSImage *icon, NSString *text));
 NSAttributedString *DPChatMarkdown(NSString *markdown, CGFloat size);
 NSArray<NSView *> *DPChatSettings(void);

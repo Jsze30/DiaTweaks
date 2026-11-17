@@ -1,10 +1,11 @@
 #import "Transcript.h"
 
-static const CGFloat DPChatSide = 16, DPChatGap = 16, DPChatTop = 12;
+// Dia centers its chat in a column up to 596pt wide with 28pt on each side, 40pt under the header.
+static const CGFloat DPChatColumn = 596, DPChatSide = 28, DPChatGap = 16, DPChatTop = 40;
 
 @implementation DPChatTranscript {
     __weak DPChatConversation *_chat;
-    __weak NSView *_send;
+    DPChatAccent *_accent;
     DPChatScroll *_scroll;
     DPChatEmpty *_empty;
     NSMutableArray<DPChatRow *> *_rows;
@@ -15,6 +16,9 @@ static const CGFloat DPChatSide = 16, DPChatGap = 16, DPChatTop = 12;
 
 - (instancetype)initWithConversation:(DPChatConversation *)conversation {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
+    _accent = [DPChatAccent new];
+    __weak DPChatTranscript *weak = self;
+    _accent.changed = ^{ [weak reload]; };
     _rows = [NSMutableArray new];
     _scroll = [DPChatScroll new];
     _empty = [DPChatEmpty new];
@@ -55,7 +59,7 @@ static const CGFloat DPChatSide = 16, DPChatGap = 16, DPChatTop = 12;
     if (messages.count > _rows.count) _scroll.pinned = YES;
     while (_rows.count > messages.count) { [_rows.lastObject removeFromSuperview]; [_rows removeLastObject]; }
     while (_rows.count < messages.count) { [_rows addObject:[DPChatRow new]]; [_scroll.documentView addSubview:_rows.lastObject]; }
-    if (!_bubble) _bubble = [self bubbleColor];
+    if (!_bubble) _bubble = [_accent bubbleFor:self];
     [messages enumerateObjectsUsingBlock:^(DPChatMessage *message, NSUInteger i, BOOL *stop) {
         DPChatRow *row = self->_rows[i];
         [row show:message];
@@ -64,19 +68,6 @@ static const CGFloat DPChatSide = 16, DPChatGap = 16, DPChatTop = 12;
     _scroll.hidden = !messages.count;
     _empty.hidden = messages.count > 0;
     self.needsLayout = YES;
-}
-
-// The user's bubbles take the profile's accent from Dia's send button.
-- (NSColor *)bubbleColor {
-    BOOL (^isSend)(NSView *) = ^BOOL(NSView *view) { return DPHasLabel(view, @"Send prompt"); };
-    NSView *send = _send.window == self.window ? _send : nil;
-    if (!send && self.composer) send = DPFindView(self.composer, isSend);
-    for (NSView *view = self.superview; !send && view; view = view.superview) send = DPFindView(view, isSend);
-    _send = send;
-    NSColor *accent = send.layer.backgroundColor ? [NSColor colorWithCGColor:send.layer.backgroundColor] : nil;
-    if (accent.alphaComponent < 0.05) return [NSColor.labelColor colorWithAlphaComponent:0.06];
-    BOOL dark = [[self.effectiveAppearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]] isEqual:NSAppearanceNameDarkAqua];
-    return [accent colorWithAlphaComponent:dark ? 0.30 : 0.16];
 }
 
 - (void)viewDidChangeEffectiveAppearance {
@@ -103,16 +94,17 @@ static const CGFloat DPChatSide = 16, DPChatGap = 16, DPChatTop = 12;
     _scroll.frame = self.bounds;
     NSEdgeInsets insets = NSEdgeInsetsMake(DPChatTop, 0, bottom, 0);
     if (!NSEdgeInsetsEqual(insets, _scroll.contentInsets)) _scroll.contentInsets = insets;
-    CGFloat width = MAX(_scroll.contentSize.width - DPChatSide * 2, 40), y = 0;
+    CGFloat width = MAX(MIN(_scroll.contentSize.width - DPChatSide * 2, DPChatColumn), 40), y = 0;
+    CGFloat x = floor((_scroll.contentSize.width - width) / 2);
     for (DPChatRow *row in _rows) {
         CGFloat height = [row heightForWidth:width];
-        row.frame = NSMakeRect(DPChatSide, y, width, height);
+        row.frame = NSMakeRect(x, y, width, height);
         y += height + DPChatGap;
     }
     [_scroll.documentView setFrameSize:NSMakeSize(_scroll.contentSize.width, MAX(y - DPChatGap, 0))];
     if (!_empty.hidden) {
         CGFloat height = [_empty heightForWidth:width];
-        _empty.frame = NSMakeRect(DPChatSide, floor(bottom + (NSHeight(self.bounds) - DPChatTop - bottom - height) / 2), width, height);
+        _empty.frame = NSMakeRect(x, floor(bottom + (NSHeight(self.bounds) - bottom - height) / 2), width, height);
     }
     [_scroll follow];
 }

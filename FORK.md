@@ -38,6 +38,7 @@ Everything lives in `src/dylib/Patches/ChatGPTSidebar/`:
 - `Service.m`, `Client.m`, `Protocol.m`, `Runtime.m`: start and talk to `codex app-server`.
 - `Conversation.m`, `Events.m`: one chat per window, and the streamed reply events.
 - `Transcript.m`, `Rows.m`, `Scroll.m`, `Empty.m`: the native message list.
+- `Card.m`, `Copy.m`, `Tip.m`, `Accent.m`, `Hover.m`, `Icons.m`: the shared page's card, the Copy button, the new-chat tips, the space's bubble color, and the hover buttons and Phosphor icons they use.
 - `Markdown.m`, `Inline.m`: Markdown rendering.
 - `Page.m`: reads the current page's text.
 - `Settings.m`: Sign Out and Choose Codex buttons.
