@@ -1,14 +1,27 @@
 # Jason's fork
 
-This fork adds one tweak on top of upstream DiaTweaks: **ChatGPT Sidebar**.
+This fork makes two changes on top of upstream DiaTweaks: the **ChatGPT Sidebar** tweak, and a fix to the **Command Bar** tweak.
 
-## What it does
+## Command Bar: new tabs
+
+A new tab stays out of the sidebar while the command bar is open.
+It only gets a sidebar row once you choose a result, and pressing Escape leaves no row behind.
+The code is in `src/dylib/Patches/CommandBar/TabRows.m`.
+
+## ChatGPT Sidebar: what it does
 
 Dia's chat sidebar answers with ChatGPT instead of Dia's own AI.
 It uses your existing ChatGPT login from Codex, so there is no extra sign-in and no API key.
-Dia's own header and composer stay exactly as they are, so the sidebar keeps your profile's colors.
+Dia's own header and composer stay as they are.
 Only the message list is replaced with a native one that streams ChatGPT's replies.
-The tabs attached in the composer (the current tab's chip, plus any you add) are sent along with your message, once each.
+
+- It looks like Dia's chat: Dia's sizes and spacing, a tip card on a new chat, and a Copy button under each finished reply.
+- Your message bubbles take the space's color and follow it when the window switches spaces.
+- The tabs attached in the composer's chips are read and sent with your message, once each, and the first one shows as a card above it.
+- A favorite's chip keeps its saved URL, so when no page matches it exactly, the open page on the same site is read instead.
+- Each tab has its own chat, which survives tab switches and Dia restarts.
+- New chat starts the tab's chat over, and closing the tab clears it.
+- A question asked in Dia's command bar, such as on a new tab, is answered by ChatGPT in the chat it opens.
 
 Turn it on in Dia Settings, under the AI section.
 It needs the Codex app or CLI installed and signed in with ChatGPT.
@@ -25,7 +38,7 @@ Instead, the tweak:
 - Catches Return and the Send button in Dia's composer, takes the text, and clears the field.
 - Sends the text to a local `codex app-server` process, which talks to ChatGPT with your Codex login.
 - Streams the reply into the transcript, rendered from Markdown.
-- Keeps one chat per tab, saved with its Codex thread so it comes back after Dia restarts. Only closing the tab or Dia's New chat clears it.
+- Keeps one chat per tab, saved as a Codex thread so it comes back after Dia restarts.
 - Stops a reply on Escape.
 
 Codex runs with tools, shell, web search, MCP servers and history all turned off, so it can only chat.
@@ -48,5 +61,7 @@ Everything lives in `src/dylib/Patches/ChatGPTSidebar/`:
 ## Status
 
 It builds and `make check` passes.
-A real ChatGPT reply through the same Codex setup was tested outside Dia and came back in about 3 seconds.
-It hasn't been fully tested inside Dia yet.
+Tested inside Dia: ChatGPT replies in the sidebar, the new look, the page card from the composer's chips, and the command bar keeping a new tab out of the sidebar.
+Per-tab chats, New chat, restarts and favorites were checked inside Dia as each fix was built, but not re-tested together after merging.
+The command bar question hand-off is new and has only been lightly tested.
+Not done yet: the full-window chat (Dia's chat tab) and letting ChatGPT use tools are still in progress.
