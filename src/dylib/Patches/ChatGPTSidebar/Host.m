@@ -102,9 +102,10 @@ static void DPChatAttach(NSViewController *sidebar) {
     DPChatHost *previous = DPGet(sidebar, &gHostKey), *host = DPGet(container, &gHostKey);
     if (host && host.window != container.window) DPChatDetach(host), host = nil;  // Dia moved the panel to another window.
     DPChatConversation *chat = [DPChatConversation forTab:tab window:container.window];
-    // A window has one sidebar, and each tab keeps its own chat view in it, so another tab's view stays as it is.
-    // A new chat view for the same tab means Dia started a new chat (button, menu or shortcut).
-    if (previous && previous != host && [previous.tab isEqual:tab]) {
+    // A window has one sidebar, and each tab keeps its own chat view in it, so another tab's view stays as it is, and so does
+    // another live view of this tab: swapping between them on every layout is a loop AppKit ends by crashing Dia.
+    // Only a new view after Dia took this tab's old one out of the window means it started a new chat (button, menu or shortcut).
+    if (previous && previous != host && [previous.tab isEqual:tab] && !previous.container.window) {
         if (previous.window == container.window) [chat reset];
         DPChatDetach(previous);
     }
