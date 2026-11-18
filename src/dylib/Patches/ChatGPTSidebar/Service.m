@@ -27,6 +27,7 @@ NSNotificationName const DPChatServiceEvent = @"DPChatServiceEvent";
     self.client = client;
     __weak DPChatService *weak = self;
     client.event = ^(NSString *method, NSDictionary *params) { [weak event:method params:params]; };
+    client.serve = ^(NSString *method, NSDictionary *params, DPChatReply reply) { DPChatServe(method, params, reply); };
     client.failed = ^(NSString *message) {
         weak.connecting = weak.signedIn = weak.signingIn = NO;
         weak.problem = message;

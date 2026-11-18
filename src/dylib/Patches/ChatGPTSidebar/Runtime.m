@@ -70,10 +70,12 @@ NSDictionary *DPChatEnvironment(NSString *executable) {
 NSArray *DPChatArguments(void) {
     return @[@"app-server", @"--listen", @"stdio://",
         @"-c", @"forced_login_method=\"chatgpt\"", @"-c", @"mcp_servers={}",
-        @"-c", @"approval_policy=\"never\"", @"-c", @"sandbox_mode=\"read-only\"",
+        // Every app tool call asks first, so DPChatServe decides: reads run, writes are turned down.
+        @"-c", @"approval_policy=\"on-request\"", @"-c", @"apps._default.default_tools_approval_mode=\"prompt\"",
+        @"-c", @"sandbox_mode=\"read-only\"",
         @"-c", @"features.shell_tool=false", @"-c", @"features.unified_exec=false",
-        @"-c", @"features.apps=false", @"-c", @"features.browser_use=false",
+        @"-c", @"features.apps=true", @"-c", @"features.browser_use=false",
         @"-c", @"features.computer_use=false", @"-c", @"features.multi_agent=false",
-        @"-c", @"web_search=\"disabled\"", @"-c", @"history.persistence=\"none\"",
+        @"-c", @"web_search=\"live\"", @"-c", @"history.persistence=\"none\"",
         @"-c", @"project_doc_max_bytes=0", @"-c", @"model_reasoning_effort=\"low\""];
 }
