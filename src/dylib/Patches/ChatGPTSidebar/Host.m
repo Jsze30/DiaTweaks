@@ -1,4 +1,5 @@
 #import "Host.h"
+#import "Patches/CommandBar/Tabs.h"
 
 // Swaps only Dia's web-rendered message list for our transcript, keeping its header and composer.
 @interface DPChatHost : NSObject
@@ -6,6 +7,7 @@
 @property(weak) NSView *panel, *container;
 @property(nonatomic, weak) NSView *composer;
 @property(weak) NSWindow *window;
+@property(copy) NSString *tab;
 @property(nonatomic) NSView *wrapper;  // Strong, so its observer is always removed.
 @property DPChatTranscript *transcript;
 @property DPChatConversation *conversation;
@@ -72,6 +74,7 @@ static void DPChatDetach(DPChatHost *host) {
     host.composer = nil;
     for (id owner in @[ host.sidebar ?: NSNull.null, host.panel ?: NSNull.null, host.container ?: NSNull.null ])
         if (owner != NSNull.null && DPGet(owner, &gHostKey) == host) DPSet(owner, &gHostKey, nil);
+    DPChatClearHints(host.container);
     [gHosts removeObject:host];
 }
 
@@ -94,21 +97,29 @@ static void DPChatAttach(NSViewController *sidebar) {
     if (!DPChatGPTSidebar.on || !sidebar.viewLoaded) return;
     NSView *panel = nil, *container = nil, *wrapper = nil, *composer = nil;
     if (!DPChatResolve(sidebar.view, &panel, &container, &wrapper, &composer) || !container.window) return;
+    NSString *tab = DPActiveTabID(container.window);  // The sidebar on screen is the front tab's.
+    if (!tab) return;
     DPChatHost *previous = DPGet(sidebar, &gHostKey), *host = DPGet(container, &gHostKey);
     if (host && host.window != container.window) DPChatDetach(host), host = nil;  // Dia moved the panel to another window.
-    if (previous && previous != host) DPChatDetach(previous);
+    DPChatConversation *chat = [DPChatConversation forTab:tab window:container.window];
+    // A window has one sidebar, and each tab keeps its own chat view in it, so another tab's view stays as it is.
+    // A new chat view for the same tab means Dia started a new chat (button, menu or shortcut).
+    if (previous && previous != host && [previous.tab isEqual:tab]) {
+        if (previous.window == container.window) [chat reset];
+        DPChatDetach(previous);
+    }
     if (!host) {
         host = [DPChatHost new];
         host.window = container.window;
-        host.conversation = [DPChatConversation forWindow:container.window];
-        host.transcript = [[DPChatTranscript alloc] initWithConversation:host.conversation];
+        host.transcript = [[DPChatTranscript alloc] initWithConversation:nil];
         host.transcript.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         host.container = container;
         DPSet(container, &gHostKey, host);
         [gHosts addObject:host];
         if (!DPTesting) [DPChatService.shared connect];
     }
-    host.sidebar = sidebar, host.panel = panel, host.composer = composer;
+    if (host.conversation != chat) host.conversation = host.transcript.conversation = chat;
+    host.sidebar = sidebar, host.panel = panel, host.composer = composer, host.tab = tab;
     DPSet(sidebar, &gHostKey, host);
     DPSet(panel, &gHostKey, host);
     NSArray<NSView *> *subviews = container.subviews;
@@ -119,12 +130,25 @@ static void DPChatAttach(NSViewController *sidebar) {
     if (!NSEqualRects(host.transcript.frame, container.bounds)) host.transcript.frame = container.bounds;
     [host setWrapper:wrapper restore:YES];
     [host enforce];
+    // Dia opens a question from its command bar in a chat tab, the one kind of tab with no web address.
+    id url = [DPScriptTab(container.window, tab) valueForKey:@"URL"];
+    if (!chat.messages.count && !chat.busy && !([url isKindOfClass:NSString.class] && [url length])) {
+        NSString *asked = DPChatTakeAsked(container.window);
+        if (asked.length) [chat send:asked pages:@[]];
+    }
+    DPChatClearHints(container);
 }
 
 static void DPChatSidebar_viewWillLayout(NSViewController *self, SEL _cmd) {
     DPCallOriginal(DPChatSidebar_viewWillLayout, self);
     [gSidebars addObject:self];
     DPChatAttach(self);
+}
+
+// Dia's new chat view doesn't lay out the sidebar again, so attach when its composer shows up.
+static void DPChatComposer_viewDidMoveToWindow(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPChatComposer_viewDidMoveToWindow, self);
+    if (self.window && DPChatGPTSidebar.on) dispatch_async(dispatch_get_main_queue(), ^{ DPChatApplyHost(); });
 }
 
 DPChatConversation *DPChatConversationFor(NSView *view) {
@@ -156,7 +180,10 @@ void DPChatInstallHost(void) {
     gSidebars = [NSHashTable weakObjectsHashTable];
     gHosts = [NSHashTable weakObjectsHashTable];
     DPHook(DPChatSidebarClass, @selector(viewWillLayout), (IMP)DPChatSidebar_viewWillLayout);
+    DPHook(DPDiaCommandBar, @selector(viewDidMoveToWindow), (IMP)DPChatComposer_viewDidMoveToWindow);
     DPChatInstallInput();
+    DPChatInstallHints();
+    DPChatInstallTabs();
     DPOnQuit(^{ for (DPChatHost *host in gHosts.allObjects) DPChatDetach(host); });
     [NSNotificationCenter.defaultCenter addObserverForName:NSWindowWillCloseNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
         for (DPChatHost *host in gHosts.allObjects)

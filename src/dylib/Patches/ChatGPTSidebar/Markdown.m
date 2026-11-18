@@ -1,12 +1,22 @@
 #import "Transcript.h"
 
-static NSMutableParagraphStyle *DPChatParagraph(CGFloat before, CGFloat indent, CGFloat hanging) {
+// Dia's compact chat: 14pt text on 23pt lines, 12pt between blocks and 5pt between list items, lists and quotes indented 24pt and 23pt.
+static const CGFloat DPChatBlockGap = 12, DPChatItemGap = 5, DPChatListIndent = 24, DPChatQuoteIndent = 23;
+
+NSDictionary *DPChatLine(NSFont *font, CGFloat height, NSMutableParagraphStyle *style) {
+    style.minimumLineHeight = style.maximumLineHeight = height;
+    // TextKit puts a tall line's extra room above the text; CSS splits it evenly, so lift the baseline by half.
+    return @{NSParagraphStyleAttributeName: style, NSBaselineOffsetAttributeName: @((height - font.ascender + font.descender) / 2)};
+}
+
+// `marker` is where a list item's marker ends, measured from `indent`; its text starts a list indent in.
+static NSMutableParagraphStyle *DPChatParagraph(CGFloat before, CGFloat indent, CGFloat marker) {
     NSMutableParagraphStyle *style = [NSMutableParagraphStyle new];
-    style.lineHeightMultiple = 1.2;
     style.paragraphSpacingBefore = before;
     style.firstLineHeadIndent = indent;
-    style.headIndent = indent + hanging;
-    style.tabStops = hanging ? @[[[NSTextTab alloc] initWithTextAlignment:NSTextAlignmentLeft location:indent + hanging options:@{}]] : @[];
+    style.headIndent = marker ? indent + DPChatListIndent : indent;
+    style.tabStops = !marker ? @[] : @[[[NSTextTab alloc] initWithTextAlignment:NSTextAlignmentRight location:indent + marker options:@{}],
+                                       [[NSTextTab alloc] initWithTextAlignment:NSTextAlignmentLeft location:indent + DPChatListIndent options:@{}]];
     return style;
 }
 
@@ -18,17 +28,20 @@ NSAttributedString *DPChatMarkdown(NSString *markdown, CGFloat size) {
     }
     NSMutableAttributedString *out = [NSMutableAttributedString new];
     NSCharacterSet *space = NSCharacterSet.whitespaceCharacterSet, *rule = [NSCharacterSet characterSetWithCharactersInString:@"-*_ "];
+    NSFont *body = [NSFont systemFontOfSize:size];
+    CGFloat line = round(size * 23 / 14);
     NSTextBlock *code = nil;
-    BOOL gap = NO, listed = NO;
-    for (NSString *line in [markdown componentsSeparatedByString:@"\n"]) {
-        NSString *trimmed = [line stringByTrimmingCharactersInSet:space];
+    BOOL gap = NO, listed = NO, titled = NO;
+    NSUInteger leads[8], depth = 0;  // the indent of each open list level
+    for (NSString *text in [markdown componentsSeparatedByString:@"\n"]) {
+        NSString *trimmed = [text stringByTrimmingCharactersInSet:space];
         if ([trimmed hasPrefix:@"```"]) {
             gap = out.length > 0;
             if (!code && out.length) {
                 // A block's margin takes its fill, so the space above it comes from the paragraph before.
                 NSRange last = [out.string paragraphRangeForRange:NSMakeRange(out.length - 1, 0)];
                 NSMutableParagraphStyle *style = [[out attribute:NSParagraphStyleAttributeName atIndex:last.location effectiveRange:NULL] mutableCopy];
-                style.paragraphSpacing = 10;
+                style.paragraphSpacing = DPChatBlockGap;
                 [out addAttribute:NSParagraphStyleAttributeName value:style range:last];
             }
             code = code ? nil : [NSTextBlock new];
@@ -42,10 +55,10 @@ NSAttributedString *DPChatMarkdown(NSString *markdown, CGFloat size) {
             gap = gap || out.length;
             continue;
         }
-        NSRange all = NSMakeRange(0, line.length);
-        NSTextCheckingResult *item = code ? nil : [list firstMatchInString:line options:0 range:all];
-        NSTextCheckingResult *title = code || item ? nil : [heading firstMatchInString:line options:0 range:all];
-        CGFloat before = !out.length ? 0 : gap ? 10 : item && listed ? 4 : 0;
+        NSRange all = NSMakeRange(0, text.length);
+        NSTextCheckingResult *item = code ? nil : [list firstMatchInString:text options:0 range:all];
+        NSTextCheckingResult *title = code || item ? nil : [heading firstMatchInString:text options:0 range:all];
+        CGFloat before = !out.length ? 0 : item && listed ? DPChatItemGap : gap || titled || (title && out.length) ? DPChatBlockGap : 0;
         if (out.length) {
             NSDictionary *last = [out attributesAtIndex:out.length - 1 effectiveRange:NULL];
             NSDictionary *end = @{NSParagraphStyleAttributeName: last[NSParagraphStyleAttributeName], NSFontAttributeName: last[NSFontAttributeName]};
@@ -58,28 +71,37 @@ NSAttributedString *DPChatMarkdown(NSString *markdown, CGFloat size) {
             style.textBlocks = @[code];
             base[NSParagraphStyleAttributeName] = style;
             base[NSFontAttributeName] = [NSFont monospacedSystemFontOfSize:size - 2 weight:NSFontWeightRegular];
-            [out appendAttributedString:[[NSAttributedString alloc] initWithString:line.length ? line : @" " attributes:base]];
+            [out appendAttributedString:[[NSAttributedString alloc] initWithString:text.length ? text : @" " attributes:base]];
         } else if (item) {
-            NSString *lead = [[line substringWithRange:[item rangeAtIndex:1]] stringByReplacingOccurrencesOfString:@"\t" withString:@"    "];
-            NSString *marker = [line substringWithRange:[item rangeAtIndex:2]];
-            marker = marker.length == 1 && !isdigit([marker characterAtIndex:0]) ? @"•" : marker;
-            CGFloat indent = MIN(lead.length / 2, 4) * size * 1.4;
-            base[NSParagraphStyleAttributeName] = DPChatParagraph(before, indent, size * 1.4);
-            [out appendAttributedString:DPChatInline([NSString stringWithFormat:@"%@\t%@", marker, [line substringWithRange:[item rangeAtIndex:3]]],
-                                                     size, NO, base)];
+            NSUInteger lead = [[text substringWithRange:[item rangeAtIndex:1]] stringByReplacingOccurrencesOfString:@"\t" withString:@"    "].length;
+            if (!listed) depth = 0;
+            while (depth && leads[depth - 1] > lead) depth--;
+            if ((!depth || leads[depth - 1] < lead) && depth < 8) leads[depth++] = lead;
+            NSString *marker = [text substringWithRange:[item rangeAtIndex:2]];
+            BOOL bullet = marker.length == 1 && !isdigit([marker characterAtIndex:0]);
+            // WebKit draws a 4.5pt disc whose right edge is 16pt in, and ends a number a space short of the text.
+            NSMutableParagraphStyle *style = DPChatParagraph(before, MIN(depth - 1, 4) * DPChatListIndent, DPChatListIndent - size * (bullet ? 0.49 : 0.27));
+            [base addEntriesFromDictionary:DPChatLine(body, line, style)];
+            NSMutableDictionary *dot = [base mutableCopy];
+            dot[NSFontAttributeName] = bullet ? [NSFont systemFontOfSize:size weight:NSFontWeightBlack] : body;
+            [out appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"\t%@\t", bullet ? @"•" : marker] attributes:dot]];
+            [out appendAttributedString:DPChatInline([text substringWithRange:[item rangeAtIndex:3]], size, NSFontWeightRegular, base)];
         } else if (title) {
-            NSUInteger level = [title rangeAtIndex:1].length;
-            base[NSParagraphStyleAttributeName] = DPChatParagraph(out.length ? before + 6 : 0, 0, 0);
-            [out appendAttributedString:DPChatInline([line substringWithRange:[title rangeAtIndex:2]], size + MAX(0, 4 - (NSInteger)level), YES, base)];
+            NSUInteger level = MIN([title rangeAtIndex:1].length, 4) - 1;
+            CGFloat sizes[] = {22, 17, 16, 15};
+            NSFontWeight weights[] = {NSFontWeightMedium, NSFontWeightSemibold, NSFontWeightSemibold, NSFontWeightMedium};
+            [base addEntriesFromDictionary:DPChatLine([NSFont systemFontOfSize:sizes[level]], ceil(sizes[level] * 1.3), DPChatParagraph(before, 0, 0))];
+            [out appendAttributedString:DPChatInline([text substringWithRange:[title rangeAtIndex:2]], sizes[level], weights[level], base)];
         } else {
             BOOL quote = [trimmed hasPrefix:@">"];
             while ([trimmed hasPrefix:@">"]) trimmed = [[trimmed substringFromIndex:1] stringByTrimmingCharactersInSet:space];
             if (quote) base[NSForegroundColorAttributeName] = NSColor.secondaryLabelColor;
-            base[NSParagraphStyleAttributeName] = DPChatParagraph(before, quote ? 12 : 0, 0);
-            [out appendAttributedString:DPChatInline(trimmed, size, NO, base)];
+            [base addEntriesFromDictionary:DPChatLine(body, line, DPChatParagraph(before, quote ? DPChatQuoteIndent : 0, 0))];
+            [out appendAttributedString:DPChatInline(trimmed, size, NSFontWeightRegular, base)];
         }
         gap = NO;
         listed = item != nil;
+        titled = title != nil;
     }
     return out;
 }

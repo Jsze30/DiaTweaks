@@ -1,65 +1,81 @@
 #import "Transcript.h"
 
 static BOOL DPChatWantsSignIn;
+static NSString *const DPChatTipsHidden = @"chatGPTTipsHidden";
 
-@interface DPChatSignInButton : NSButton
-@property BOOL hovered;
-@end
-
-@implementation DPChatSignInButton
-- (void)updateTrackingAreas {
-    [super updateTrackingAreas];
-    for (NSTrackingArea *area in self.trackingAreas) [self removeTrackingArea:area];
-    [self addTrackingArea:[[NSTrackingArea alloc] initWithRect:NSZeroRect options:NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect owner:self userInfo:nil]];
+// What ChatGPT here can really do: read the page, take a new page along, and remember the chat.
+static NSArray<NSArray<NSString *> *> *DPChatTips(void) {
+    return @[
+        @[@"browser", @"This page", @"Summarize this page in a few points", @"Ask about this page", @"ChatGPT reads the page you're on"],
+        @[@"arrows", @"Another page", @"How does this compare to the last page?", @"Compare pages", @"Open another page and keep asking"],
+        @[@"chat", @"Follow-ups", @"Now make it shorter", @"Keep the conversation going", @"ChatGPT remembers this chat until you start a new one"],
+    ];
 }
-- (void)mouseEntered:(NSEvent *)event { self.hovered = YES; [self refresh]; }
-- (void)mouseExited:(NSEvent *)event { self.hovered = NO; [self refresh]; }
-- (void)viewDidChangeEffectiveAppearance { [super viewDidChangeEffectiveAppearance]; [self refresh]; }
-- (void)refresh {
-    NSColor *fill = [NSColor.labelColor colorWithAlphaComponent:self.hovered && self.enabled ? 0.12 : 0.08];
-    [self.effectiveAppearance performAsCurrentDrawingAppearance:^{ self.layer.backgroundColor = fill.CGColor; }];
-}
-@end
 
-static NSTextField *DPChatLabel(CGFloat size, NSFontWeight weight, NSColor *color) {
+static NSUserDefaults *DPChatDefaults(void) { return [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"]; }
+
+static NSTextField *DPChatLabel(CGFloat size, NSColor *ink) {
     NSTextField *label = [NSTextField wrappingLabelWithString:@""];
-    label.font = [NSFont systemFontOfSize:size weight:weight];
-    label.textColor = color;
+    label.font = [NSFont systemFontOfSize:size weight:NSFontWeightMedium];
+    label.textColor = ink;
     label.alignment = NSTextAlignmentCenter;
     label.selectable = NO;
     return label;
 }
 
+// Dia's new chat: a tilted tip card, a medium title and a lighter line under it. Signed out, a sign-in button takes the card's place.
 @implementation DPChatEmpty {
-    NSTextField *_title, *_problem, *_hint;
-    DPChatSignInButton *_button;
+    DPChatTip *_tip;
+    DPChatHoverButton *_dismiss, *_button;
+    NSTextField *_title, *_subtitle;
+    NSUInteger _shown;
 }
 
 - (instancetype)initWithFrame:(NSRect)frame {
     if (!(self = [super initWithFrame:frame])) return nil;
-    _title = DPChatLabel(15, NSFontWeightMedium, NSColor.secondaryLabelColor);
-    _title.stringValue = @"ChatGPT";
-    _problem = DPChatLabel(12, NSFontWeightRegular, NSColor.secondaryLabelColor);
-    _hint = DPChatLabel(13, NSFontWeightRegular, NSColor.tertiaryLabelColor);
-    _hint.stringValue = @"Ask ChatGPT about this page";
-    _button = [DPChatSignInButton new];
-    _button.bordered = NO;
-    _button.wantsLayer = YES;
+    _tip = [DPChatTip new];
+    _dismiss = [DPChatHoverButton new];
+    _dismiss.hover = 0.05;
+    _dismiss.layer.cornerRadius = 6;
+    _dismiss.image = DPChatGlyph(@"x", 12);
+    _dismiss.contentTintColor = NSColor.tertiaryLabelColor;
+    _dismiss.toolTip = _dismiss.accessibilityLabel = @"Hide tips";
+    _dismiss.target = self;
+    _dismiss.action = @selector(hideTips);
+    _title = DPChatLabel(15, NSColor.secondaryLabelColor);
+    _subtitle = DPChatLabel(13, NSColor.tertiaryLabelColor);
+    _button = [DPChatHoverButton new];
+    _button.rest = 0.08;
+    _button.hover = 0.12;
     _button.layer.cornerRadius = 8;
-    _button.layer.cornerCurve = kCACornerCurveContinuous;
     _button.target = self;
     _button.action = @selector(signIn);
-    for (NSView *view in @[_title, _button, _problem, _hint]) [self addSubview:view];
+    for (NSView *view in @[_tip, _dismiss, _title, _subtitle, _button]) [self addSubview:view];
+    _shown = arc4random_uniform((uint32_t)DPChatTips().count);
     [self update];
     return self;
 }
 
 - (BOOL)isFlipped { return YES; }
 
+// A new tip each time a new chat shows.
+- (void)setHidden:(BOOL)hidden {
+    if (self.hidden && !hidden) {
+        _shown = (_shown + 1) % DPChatTips().count;
+        [self update];
+    }
+    [super setHidden:hidden];
+}
+
 - (void)signIn {
     DPChatService *service = DPChatService.shared;
     DPChatWantsSignIn = !service.client.task;
     [service signIn];
+}
+
+- (void)hideTips {
+    [DPChatDefaults() setBool:YES forKey:DPChatTipsHidden];
+    [self update];
 }
 
 - (void)update {
@@ -75,25 +91,30 @@ static NSTextField *DPChatLabel(CGFloat size, NSFontWeight weight, NSColor *colo
         NSFontAttributeName: [NSFont systemFontOfSize:13 weight:NSFontWeightMedium],
         NSForegroundColorAttributeName: busy ? NSColor.tertiaryLabelColor : NSColor.labelColor}];
     [_button refresh];
-    _problem.stringValue = service.problem ?: @"";
-    _hint.hidden = !service.signedIn;
-    _title.hidden = _button.hidden = service.signedIn;
-    _problem.hidden = service.signedIn || !service.problem.length;
+    NSArray<NSString *> *tip = DPChatTips()[_shown];
+    [_tip showIcon:tip[0] label:tip[1] prompt:tip[2]];
+    _tip.hidden = _dismiss.hidden = !service.signedIn || [DPChatDefaults() boolForKey:DPChatTipsHidden];
+    _button.hidden = service.signedIn;
+    _title.stringValue = service.signedIn ? tip[3] : @"Sign in to ChatGPT";
+    _subtitle.stringValue = service.signedIn ? tip[4] : service.problem.length ? service.problem : @"Uses the ChatGPT login from Codex";
     self.needsLayout = YES;
 }
 
 - (CGFloat)place:(NSView *)view at:(CGFloat)y width:(CGFloat)width {
     if (view.hidden) return y;
-    NSSize size = view == _button ? NSMakeSize(ceil(_button.attributedTitle.size.width) + 28, 30) : [(NSTextField *)view sizeThatFits:NSMakeSize(width, CGFLOAT_MAX)];
+    if ([view isKindOfClass:NSTextField.class]) ((NSTextField *)view).preferredMaxLayoutWidth = width;
+    NSSize size = view == _button ? NSMakeSize(ceil(_button.attributedTitle.size.width) + 28, 30)
+                : view == _tip ? NSMakeSize(width, 136) : [(NSTextField *)view sizeThatFits:NSMakeSize(width, CGFLOAT_MAX)];
     size.width = MIN(ceil(size.width), width);
     view.frame = NSMakeRect(floor((NSWidth(self.bounds) - size.width) / 2), y, size.width, ceil(size.height));
-    return y + ceil(size.height) + (view == _title ? 12 : 8);
+    return y + ceil(size.height) + (view == _tip ? 16 : view == _title ? 4 : 16);
 }
 
 - (CGFloat)heightForWidth:(CGFloat)width {
     CGFloat y = 0;
-    for (NSView *view in @[_title, _button, _problem, _hint]) y = [self place:view at:y width:width];
-    return MAX(y - 8, 0);
+    for (NSView *view in @[_tip, _title, _subtitle, _button]) y = [self place:view at:y width:width];
+    _dismiss.frame = NSMakeRect(floor(NSMidX(_tip.frame) + 191 / 2.0 + 8), NSMinY(_tip.frame) + 4, 20, 20);
+    return MAX(y - 16, 0);
 }
 
 - (void)layout {

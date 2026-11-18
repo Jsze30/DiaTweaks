@@ -35,39 +35,74 @@ static NSDictionary *DPChatPageResult(id result) {
     return [decoded isKindOfClass:NSDictionary.class] ? decoded : nil;
 }
 
+@implementation DPChatPage
+@end
+
 static NSString *DPChatString(id value) { return [value isKindOfClass:NSString.class] ? value : @""; }
 
-void DPChatPage(NSWindow *window, void (^done)(NSString *url, NSString *text)) {
-    __block BOOL finished = NO;
-    void (^finish)(NSString *, NSString *) = ^(NSString *url, NSString *text) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (finished) return;
-            finished = YES;
-            done(url, text);
-        });
-    };
+// The open page at `url`, in any window: a tab can be open in several, and they all show the same page.
+// A favorite's chip keeps the favorite's saved URL (calendar.google.com) while its page moves on
+// (calendar.google.com/calendar/u/0/r), so failing an exact match, take the same site's page, the one on screen first.
+static id DPChatContents(NSURL *url) {
+    id site = nil;
+    for (NSWindow *window in NSApp.windows) {
+        id browser = DPBrowserOfWindow(window);
+        for (id contents in browser ? DPTrackedContents(browser) : @[]) {
+            id address = [contents respondsToSelector:@selector(url)] ? DPMsg(contents, @selector(url)) : nil;
+            NSURL *page = [address isKindOfClass:NSURL.class] ? address : [NSURL URLWithString:DPChatString(address)];
+            if ([page.absoluteString isEqual:url.absoluteString]) return contents;
+            if (!url.host.length || [page.host caseInsensitiveCompare:url.host] != NSOrderedSame) continue;
+            BOOL shown = [contents respondsToSelector:@selector(visibility)] && ((NSInteger (*)(id, SEL))objc_msgSend)(contents, @selector(visibility)) == 2;
+            if (!site || shown) site = contents;
+        }
+    }
+    return site;
+}
 
-    id browser = window ? DPBrowserOfWindow(window) : nil;
-    long long active = browser ? DPActiveSession(browser) : 0;
-    id page = nil;
-    if (active > 0)
-        for (id candidate in DPTrackedContents(browser))
-            if (DPSessionOf(candidate) == active) { page = candidate; break; }
+static void DPChatReadPage(NSURL *url, void (^done)(DPChatPage *page)) {
+    id contents = [@[ @"https", @"http" ] containsObject:url.scheme.lowercaseString] ? DPChatContents(url) : nil;
     SEL execute = @selector(executeJavascript:completion:);
-    id address = [page respondsToSelector:@selector(url)] ? DPMsg(page, @selector(url)) : nil;
-    NSURL *url = [address isKindOfClass:NSURL.class] ? address : [address isKindOfClass:NSString.class] ? [NSURL URLWithString:address] : nil;
-    if (![page respondsToSelector:execute] || ![@[ @"https", @"http" ] containsObject:url.scheme.lowercaseString]) return finish(nil, nil);
-
-    // Never hold up the message: after this, it goes without the page.
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ finish(nil, nil); });
-    ((void (*)(id, SEL, NSString *, id))objc_msgSend)(page, execute, DPChatPageScript, ^(id result, BOOL ok) {
+    if (![contents respondsToSelector:execute]) return done(nil);
+    id favicon = [contents respondsToSelector:@selector(favicon)] ? DPMsg(contents, @selector(favicon)) : nil;
+    id tabTitle = [contents respondsToSelector:@selector(title)] ? DPMsg(contents, @selector(title)) : nil;
+    ((void (*)(id, SEL, NSString *, id))objc_msgSend)(contents, execute, DPChatPageScript, ^(id result, BOOL ok) {
         NSDictionary *data = ok ? DPChatPageResult(result) : nil;
         NSString *text = DPChatString(data[@"text"]);
-        if (!data) return finish(nil, nil);
+        if (!data) return done(nil);
         if (text.length > DPChatPageLimit) text = [text substringToIndex:DPChatPageLimit];
-        NSString *pageURL = DPChatString(data[@"url"]).length ? data[@"url"] : url.absoluteString;
-        NSMutableString *context = [NSMutableString stringWithFormat:@"Title: %@\nURL: %@", DPChatString(data[@"title"]), pageURL];
+        DPChatPage *page = [DPChatPage new];
+        page.url = DPChatString(data[@"url"]).length ? data[@"url"] : url.absoluteString;
+        // Dia's tab title ("Calendar") reads better on the card than the document's ("Name - Calendar - Week of …").
+        page.title = DPChatString(tabTitle).length ? tabTitle : DPChatString(data[@"title"]);
+        page.icon = [favicon isKindOfClass:NSImage.class] ? favicon : nil;
+        NSMutableString *context = [NSMutableString stringWithFormat:@"<page>\nTitle: %@\nURL: %@", DPChatString(data[@"title"]), page.url];
         if (text.length) [context appendFormat:@"\n%@: %@", [data[@"selection"] boolValue] ? @"Selected text" : @"Page text", text];
-        finish(pageURL, context);
+        [context appendString:@"\n</page>"];
+        page.text = context;
+        done(page);
     });
+}
+
+void DPChatPages(NSArray<NSURL *> *urls, void (^done)(NSString *key, NSArray<DPChatPage *> *pages)) {
+    NSString *key = [[urls valueForKey:@"absoluteString"] componentsJoinedByString:@"\n"];
+    NSMutableArray *read = [NSMutableArray new];
+    for (NSUInteger i = 0; i < urls.count; i++) [read addObject:NSNull.null];
+    __block NSUInteger left = urls.count;
+    __block BOOL finished = NO;
+    void (^finish)(void) = ^{
+        if (finished) return;
+        finished = YES;
+        done(key, [read filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(id page, id bindings) { return page != NSNull.null; }]]);
+    };
+    if (!left) return dispatch_async(dispatch_get_main_queue(), finish);
+    // Never hold up the message: after this, it goes with the pages read so far.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), finish);
+    [urls enumerateObjectsUsingBlock:^(NSURL *url, NSUInteger i, BOOL *stop) {
+        DPChatReadPage(url, ^(DPChatPage *page) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (page) read[i] = page;
+                if (--left == 0) finish();
+            });
+        });
+    }];
 }
