@@ -30,6 +30,27 @@ static NSString *const DPHeightKey = @"commandBarHeight", *const DPDarknessKey =
 
 static void DPCancelCommandBar(DPCommandBarOverlay *overlay);
 
+// TEMP timing trace.
+static NSTimeInterval DPTraceStart;
+static void DPTrace(NSString *step) {
+    NSString *line = [NSString stringWithFormat:@"%7.1f %@\n", (NSProcessInfo.processInfo.systemUptime - DPTraceStart) * 1000, step];
+    NSString *path = DPAppSupport(@"DiaPatches/cmdt-timing.log");
+    if (![NSFileManager.defaultManager fileExistsAtPath:path]) [NSFileManager.defaultManager createFileAtPath:path contents:nil attributes:nil];
+    NSFileHandle *file = [NSFileHandle fileHandleForWritingAtPath:path];
+    [file seekToEndOfFile];
+    [file writeData:[line dataUsingEncoding:NSUTF8StringEncoding] error:nil];
+    [file closeAndReturnError:nil];
+}
+static void DPTraceLoops(void) {
+    __block int n = 0;
+    CFRunLoopObserverRef o = CFRunLoopObserverCreateWithHandler(NULL, kCFRunLoopBeforeWaiting | kCFRunLoopAfterWaiting, YES, 2000001, ^(CFRunLoopObserverRef observer, CFRunLoopActivity activity) {
+        DPTrace(activity == kCFRunLoopBeforeWaiting ? @"  loop: before waiting" : @"  loop: after waiting");
+        if (++n > 40) { CFRunLoopObserverInvalidate(observer); }
+    });
+    CFRunLoopAddObserver(CFRunLoopGetMain(), o, kCFRunLoopCommonModes);
+    CFRelease(o);
+}
+
 static NSUserDefaults *DPSettings(void) {
     static NSUserDefaults *settings;
     static dispatch_once_t once;
@@ -402,6 +423,7 @@ static id DPWatchKeys(DPCommandBarOverlay *overlay) {
 
 // Dia, mid-switch, takes the hidden page's web view out of the window and later titles the window after the new tab; both are undone here.
 static void DPGoBack(DPCommandBarOverlay *overlay) {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 200 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ DPTrace(@"200ms refocus"); });
     NSView *web = DPFindView(overlay.host.contentView, ^BOOL(NSView *view) { return DPIsKind(view, "WebContentsHostView") && !view.isHiddenOrHasHiddenAncestor; });
     NSView *paneHost = web.superview;
     NSString *returnID = DPTabID(overlay.returnTab);
@@ -489,6 +511,7 @@ static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     if (![recent.lastObject isEqual:openedID]) returnID = recent.lastObject;
     // Going back to a split while Dia is still switching tabs crashes it, so new tabs in or from one keep Dia's own page.
     if (DPInSplit(page) || (!overBlank && [DPSplits(window) containsObject:returnID])) return (void)DPSet(page, &DPOwnBarKey, @YES);
+    DPTrace(@"present start");
     DPCommandBarOverlay *overlay = openedTab ? DPLiftBar(page, overBlank || !returnID ? nil : DPScriptTabIn(scriptWindow, returnID)) : nil;
     if (!overlay) return;
     if (overBlank) {
@@ -503,6 +526,7 @@ static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     overlay.overBlank = overBlank;
     overlay.openedTab = openedTab;
     overlay.startURL = [openedTab valueForKey:@"URL"];
+    DPTrace(@"lifted");
 
     __weak DPCommandBarOverlay *weak = overlay;
     overlay.watch = [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *timer) {
@@ -514,7 +538,9 @@ static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     // A run loop block runs once Dia is done; a transaction held open until it has gone back keeps the new tab from being drawn.
     [CATransaction begin];
     CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+        DPTrace(@"goback start");
         @try { if (weak.superview) DPGoBack(weak); } @finally { [CATransaction commit]; }
+        DPTrace(@"goback end + commit");
     });
     CFRunLoopWakeUp(CFRunLoopGetMain());
 }
@@ -603,6 +629,7 @@ static NSEvent *DPCommandBarKey(NSEvent *event) {
     if (!DPCommandBar.on || !window) return event;
     if (DPIsShortcut(event, @"Close Tab")) DPSet(window, &DPClosedAtKey, @(event.timestamp));
     BOOL newTab = DPIsShortcut(event, @"New Tab");
+    if (newTab && event.type == NSEventTypeKeyDown) { DPTraceStart = event.timestamp; DPTrace(@"=== key (event timestamp 0)"); DPTraceLoops(); }
     if (!(newTab || DPIsShortcut(event, @"Open Command Bar"))) return event;
     DPSet(window, &DPClosedAtKey, nil);  // Closing a tab that wasn't the last leaves the stamp unread, which would hide this new tab as a blank.
     DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
@@ -668,7 +695,9 @@ static void DPContentPane_viewDidMoveToWindow(NSView *self, SEL _cmd) {
 }
 
 static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
+    DPTrace(@"page moved to window: before original");
     DPCallOriginal(DPNewTabPage_viewDidMoveToWindow, self);
+    DPTrace(@"page moved to window: after original");
     NSWindow *window = self.window;
     if (!window) return;
     id scriptWindow = DPScriptWindow(window);
@@ -755,6 +784,17 @@ static NSString *DPVerifyCommandBar(DPPatch *patch) {
 }
 
 static void DPInstallCommandBar(void) {
+    [NSDistributedNotificationCenter.defaultCenter addObserverForName:@"com.diapatches.dev.cmdt" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+        NSWindow *w = NSApp.mainWindow ?: NSApp.windows.firstObject;
+        NSString *chars = note.object ?: @"t";
+        NSEventModifierFlags mods = [chars isEqual:@"esc"] ? 0 : NSEventModifierFlagCommand;
+        NSString *c = [chars isEqual:@"esc"] ? @"\e" : chars;
+        unsigned short code = [chars isEqual:@"esc"] ? 53 : 17;
+        for (int i = 0; i < 2; i++) {
+            NSEvent *e = [NSEvent keyEventWithType:i ? NSEventTypeKeyUp : NSEventTypeKeyDown location:NSZeroPoint modifierFlags:mods timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:w.windowNumber context:nil characters:c charactersIgnoringModifiers:c isARepeat:NO keyCode:code];
+            [NSApp postEvent:e atStart:NO];
+        }
+    }];
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) { return DPCommandBarKey(event); }];
     DPInstallAutoPipHold();
     DPInstallTabRows();

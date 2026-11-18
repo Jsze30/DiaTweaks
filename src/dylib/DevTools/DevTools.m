@@ -96,6 +96,22 @@ static void DPScriptFocus(NSNotification *note) {
     if (view) [window makeFirstResponder:view];
 }
 
+// Runs the main menu item with this title, wherever it is.
+static NSMenuItem *DPMenuItemNamed(NSMenu *menu, NSString *title) {
+    for (NSMenuItem *item in menu.itemArray) {
+        if ([item.title isEqual:title]) return item;
+        NSMenuItem *found = item.submenu ? DPMenuItemNamed(item.submenu, title) : nil;
+        if (found) return found;
+    }
+    return nil;
+}
+
+static void DPScriptMenu(NSNotification *note) {
+    NSMenuItem *item = DPMenuItemNamed(NSApp.mainMenu, note.object);
+    [item.menu update];
+    if (item.enabled) [item.menu performActionForItemAtIndex:[item.menu indexOfItem:item]];
+}
+
 // Presses Return in the front window, as a real key press would.
 static void DPScriptReturn(NSNotification *note) {
     NSWindow *window = NSApp.keyWindow ?: NSApp.mainWindow;
@@ -125,6 +141,7 @@ static void DPListenForScripts(void) {
     DPListen(@"com.diapatches.dev.click", DPScriptClick);
     DPListen(@"com.diapatches.dev.return", DPScriptReturn);
     DPListen(@"com.diapatches.dev.focus", DPScriptFocus);
+    DPListen(@"com.diapatches.dev.menu", DPScriptMenu);
 }
 
 void DPInstallDevTools(void) {

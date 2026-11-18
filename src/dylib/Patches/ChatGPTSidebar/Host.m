@@ -107,7 +107,10 @@ static NSString *DPChatDiaID(NSView *wrapper) {
         NSView *view = [contents respondsToSelector:@selector(nativeView)] ? DPMsg(contents, @selector(nativeView)) : nil;
         if (![view isKindOfClass:NSView.class] || ![view isDescendantOf:wrapper]) continue;
         id address = [contents respondsToSelector:@selector(url)] ? DPMsg(contents, @selector(url)) : nil;
-        NSURLComponents *url = [NSURLComponents componentsWithString:[address isKindOfClass:NSURL.class] ? [address absoluteString] : [address description]];
+        NSString *text = [address isKindOfClass:NSURL.class] ? [address absoluteString] : [address isKindOfClass:NSString.class] ? address : nil;
+        // A chat view that is still loading has no address yet.
+        NSURLComponents *url = text.length ? [NSURLComponents componentsWithString:text] : nil;
+        if (!url) return nil;
         for (NSURLQueryItem *item in url.queryItems) if ([item.name isEqual:@"blindID"]) return item.value;
         return [url.scheme isEqual:@"dia"] && [url.host isEqual:@"assistant"] ? url.path.lastPathComponent : nil;
     }
