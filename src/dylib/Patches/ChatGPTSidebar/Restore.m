@@ -41,14 +41,17 @@ static NSString *DPChatTyped(NSDictionary *item) {
 - (void)show:(NSDictionary *)thread {
     for (NSDictionary *turn in [thread[@"turns"] isKindOfClass:NSArray.class] ? thread[@"turns"] : @[]) {
         if (![turn isKindOfClass:NSDictionary.class]) continue;
+        DPChatMessage *answer = nil;  // the turn's last message, as the live chat shows it
         for (NSDictionary *item in [turn[@"items"] isKindOfClass:NSArray.class] ? turn[@"items"] : @[]) {
             if (![item isKindOfClass:NSDictionary.class]) continue;
             BOOL user = [item[@"type"] isEqual:@"userMessage"];
             NSString *text = user ? DPChatTyped(item) : [item[@"type"] isEqual:@"agentMessage"] ? item[@"text"] : nil;
             if (![text isKindOfClass:NSString.class] || !text.length) continue;
+            if (!user && answer) { answer.text = text; continue; }
             DPChatMessage *message = [DPChatMessage new];
             message.text = text;
             message.fromUser = user;
+            if (!user) answer = message;
             [self.messages addObject:message];
         }
     }

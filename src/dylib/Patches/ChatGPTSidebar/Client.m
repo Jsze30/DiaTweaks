@@ -36,7 +36,8 @@
         });
     };
     if (![task launchAndReturnError:&error]) { [self stop]; return done(nil, error.localizedDescription); }
-    [self request:@"initialize" params:@{@"clientInfo": @{@"name": @"diatweaks", @"title": @"DiaTweaks", @"version": @"1.0"}}
+    [self request:@"initialize" params:@{@"clientInfo": @{@"name": @"diatweaks", @"title": @"DiaTweaks", @"version": @"1.0"},
+                                                         @"capabilities": @{@"experimentalApi": @YES}}
         done:^(NSDictionary *result, NSString *problem) {
             if (!problem) [weak write:@{@"method": @"initialized", @"params": @{}}];
             done(result, problem);

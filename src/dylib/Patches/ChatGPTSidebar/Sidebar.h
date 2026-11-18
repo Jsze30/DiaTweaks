@@ -63,3 +63,7 @@ void DPChatPages(NSArray<NSURL *> *urls, void (^done)(NSString *key, NSArray<DPC
 NSArray<NSURL *> *DPChatAttachedURLs(NSView *chips);
 NSAttributedString *DPChatMarkdown(NSString *markdown, CGFloat size);
 NSArray<NSView *> *DPChatSettings(void);
+// The browser tools ChatGPT gets, and the answer to each request Codex sends: a tool call or an approval.
+NSArray *DPChatTools(void);
+void DPChatServe(NSString *method, NSDictionary *params, DPChatReply reply);
+NSString *DPChatWindowOfThread(NSString *thread);  // the Dia window whose tab owns the chat

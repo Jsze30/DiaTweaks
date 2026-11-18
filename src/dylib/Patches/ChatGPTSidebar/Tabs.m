@@ -75,6 +75,12 @@ static NSUserDefaults *DPChatDefaults(void) { return [[NSUserDefaults alloc] ini
 }
 @end
 
+NSString *DPChatWindowOfThread(NSString *thread) {
+    for (DPChatConversation *chat in gChats.allValues)
+        if ([chat.threadID isEqual:thread]) return chat.windowID;
+    return nil;
+}
+
 // Dia updates its tab list after the page closes.
 static void DPChatPage_close(id self, SEL _cmd, NSInteger timing) {
     DPCallOriginal(DPChatPage_close, self, timing);
