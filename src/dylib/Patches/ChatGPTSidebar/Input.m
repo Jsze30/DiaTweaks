@@ -36,18 +36,6 @@ static void DPChatSubmit(NSView *composer, NSTextView *textView) {
     [conversation send:text pages:chips ? DPChatAttachedURLs(chips) : url ? @[ url ] : @[]];
 }
 
-// A question asked in Dia's command bar opens a new chat tab and goes to Dia's own AI, so keep it for that tab's chat.
-static NSString *gAsked;
-static __weak NSWindow *gAskedWindow;
-static CFTimeInterval gAskedAt;
-
-NSString *DPChatTakeAsked(NSWindow *window) {
-    if (!gAsked || window != gAskedWindow || CACurrentMediaTime() - gAskedAt > 10) return nil;
-    NSString *asked = gAsked;
-    gAsked = nil;
-    return asked;
-}
-
 static NSEvent *DPChatKeyDown(NSEvent *event) {
     if (!DPChatGPTSidebar.on) return event;
     NSTextView *textView = (NSTextView *)event.window.firstResponder;
@@ -55,12 +43,8 @@ static NSEvent *DPChatKeyDown(NSEvent *event) {
     NSEventModifierFlags mods = event.modifierFlags & (NSEventModifierFlagShift | NSEventModifierFlagOption | NSEventModifierFlagCommand | NSEventModifierFlagControl);
     BOOL submit = (event.keyCode == 36 || event.keyCode == 76) && !mods && !textView.hasMarkedText;
     NSView *composer = DPChatComposerFor(textView);
-    if (!composer && submit && [NSStringFromClass(textView.class) hasPrefix:@"_TtCC15BoostCommandBar"]) {
-        gAsked = [[textView.string stringByReplacingOccurrencesOfString:@"￼" withString:@""] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        gAskedWindow = event.window;
-        gAskedAt = CACurrentMediaTime();
-    }
-    if (!composer || DPChatPicking(composer)) return event;
+    if (!composer) return DPChatBarKey(event, textView) ? nil : event;
+    if (DPChatPicking(composer)) return event;
     if (event.keyCode == 53 && !mods) {
         DPChatConversation *conversation = DPChatConversationFor(composer);
         if (!conversation.busy) return event;
@@ -77,6 +61,7 @@ static NSEvent *DPChatKeyDown(NSEvent *event) {
 static NSEvent *DPChatMouseDown(NSEvent *event) {
     if (!DPChatGPTSidebar.on || !event.window) return event;
     NSView *frame = event.window.contentView.superview ?: event.window.contentView;
+    if (DPChatBarClick(event, [frame hitTest:event.locationInWindow])) return nil;
     for (NSView *view = [frame hitTest:event.locationInWindow]; view; view = view.superview) {
         if (DPHasLabel(view, @"Send prompt")) {
             NSView *composer = DPChatComposerFor(view);
@@ -97,4 +82,5 @@ static NSEvent *DPChatMouseDown(NSEvent *event) {
 void DPChatInstallInput(void) {
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) { return DPChatKeyDown(event); }];
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown handler:^NSEvent *(NSEvent *event) { return DPChatMouseDown(event); }];
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseUp handler:^NSEvent *(NSEvent *event) { return DPChatBarMouseUp() ? nil : event; }];
 }
