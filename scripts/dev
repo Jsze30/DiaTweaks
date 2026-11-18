@@ -1,0 +1,13 @@
+#!/bin/sh
+# Sends a developer-tools command to Dia, which must be running with `defaults write com.diapatches devTools -bool YES`.
+# scripts/dev trace "TabSidebar.LibraryCellView [selector text]"  logs those methods' calls to trace.txt
+# scripts/dev mark "clicked New Tab"                              writes a line there, to line up steps with calls
+# scripts/dev untrace                                             stops and puts the methods back
+# Also: set key=1, dump, methods Class, click Label, focus Class, type text, return, menu Title.
+[ $# -ge 1 ] || { sed -n '2,7p' "$0" | cut -c3- >&2; exit 2; }
+exec osascript -l JavaScript - "$@" >/dev/null <<'JS'
+ObjC.import('Foundation')
+function run(argv) {
+    $.NSDistributedNotificationCenter.defaultCenter.postNotificationNameObjectUserInfoDeliverImmediately('com.diapatches.dev.' + argv[0], argv[1] || '', $(), true)
+}
+JS

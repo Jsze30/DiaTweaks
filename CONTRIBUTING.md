@@ -26,6 +26,10 @@ Each patch is one folder in `src/dylib/Patches/`, built on StdPatch: `src/dylib/
 - Keep files to about 100 lines. Split a big patch into several files in its folder.
 
 With the developer tools on, a script can also drive Dia: post the distributed notification `com.diapatches.dev.set` with the object `hideToolbar=1` to flip a switch, or `com.diapatches.dev.dump` to write every window's view tree to `~/Library/Application Support/DiaPatches/views.txt`.
+`scripts/dev` sends these for you.
+`scripts/dev trace TabSidebar.LibraryCellView` logs every call to that class's own Objective-C methods, with arguments, results and nesting, to `trace.txt` in the same folder, until `scripts/dev untrace`.
+Add a second word to trace only selectors containing it, and `scripts/dev mark "clicked New Tab"` to line steps up with the calls they caused.
+Pure Swift methods aren't in the Objective-C runtime, so trace their `@objc` callers instead.
 
 ## Documenting a patch
 

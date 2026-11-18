@@ -26,7 +26,7 @@ build/DiaPatchesSwift.o: $(DYLIB_SWIFT) | build
 	swiftc $(SWIFTFLAGS) -emit-object -o $@ $^
 
 build/DiaPatches.dylib: $(DYLIB_SOURCES) build/DiaPatchesSwift.o $(wildcard $(PASSKEYS)/*) | build
-	clang $(CFLAGS) -Isrc/dylib -dynamiclib $(EXTENSION) -framework AppKit -framework QuartzCore -framework Metal -framework AVFoundation -framework VideoToolbox -framework CoreMedia -framework CoreVideo -lsqlite3 \
+	clang $(CFLAGS) -Isrc/dylib -dynamiclib $(EXTENSION) -framework AppKit -framework QuartzCore -framework Metal -framework AVFoundation -framework VideoToolbox -framework CoreMedia -framework CoreVideo -lsqlite3 -lffi \
 		-L$(SWIFT_LIB) -Wl,-rpath,/usr/lib/swift $(FOUNDATION_MODELS) -o $@ $(filter %.m %.o,$^)
 
 # With DIAPATCH_MANIFEST set, the dylib writes the patch list and exits as it loads, so diapatch never runs.
@@ -73,10 +73,13 @@ build/tidy-tabs: tests/tidy-tabs.m $(TIDY) | build
 build/drag-offset: tests/drag-offset.m src/dylib/Patches/CompactTabRows/CompactTabRows.m src/dylib/StdPatch/Hook.m src/dylib/StdPatch/Views.m $(wildcard src/dylib/StdPatch/*.h) | build
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit -o $@ tests/drag-offset.m src/dylib/StdPatch/Hook.m src/dylib/StdPatch/Views.m
 
+build/trace: tests/trace.m src/dylib/DevTools/Trace.m src/dylib/DevTools/DevTools.h | build
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit -lffi -o $@ tests/trace.m src/dylib/DevTools/Trace.m
+
 build/launch-flags: tests/launch-flags.m src/dylib/StdPatch/Extensions.m src/dylib/StdPatch/Hook.m $(wildcard src/dylib/StdPatch/*.h) | build
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit -o $@ tests/launch-flags.m src/dylib/StdPatch/Hook.m
 
-check: build/diapatch build/group-tabs build/mouse-back-forward build/vertical-tab-glow build/split-client-hello build/peek-cursor build/peek-link build/safe-mode build/hook-table build/tidy-tabs build/drag-offset build/launch-flags build/patches.json
+check: build/diapatch build/group-tabs build/mouse-back-forward build/vertical-tab-glow build/split-client-hello build/peek-cursor build/peek-link build/safe-mode build/hook-table build/tidy-tabs build/drag-offset build/launch-flags build/trace build/patches.json
 	tests/tweaks-update
 	build/group-tabs
 	build/tidy-tabs
@@ -89,6 +92,7 @@ check: build/diapatch build/group-tabs build/mouse-back-forward build/vertical-t
 	build/hook-table
 	build/drag-offset
 	build/launch-flags
+	build/trace
 	tests/sidebar-grain
 	scripts/check-patches
 

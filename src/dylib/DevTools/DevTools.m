@@ -128,6 +128,10 @@ static void DPScriptDump(NSNotification *note) {
     [out writeToFile:DPBesideDylib(@"views.txt") atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
+static void DPScriptTrace(NSNotification *note) { DPTrace(note.object); }
+static void DPScriptMark(NSNotification *note) { DPTraceMark(note.object); }
+static void DPScriptUntrace(NSNotification *note) { DPUntrace(); }
+
 static void DPListen(NSString *name, void (*handler)(NSNotification *)) {
     [NSDistributedNotificationCenter.defaultCenter addObserverForName:name object:nil queue:NSOperationQueue.mainQueue
                                                            usingBlock:^(NSNotification *note) { handler(note); }];
@@ -142,10 +146,14 @@ static void DPListenForScripts(void) {
     DPListen(@"com.diapatches.dev.return", DPScriptReturn);
     DPListen(@"com.diapatches.dev.focus", DPScriptFocus);
     DPListen(@"com.diapatches.dev.menu", DPScriptMenu);
+    DPListen(@"com.diapatches.dev.trace", DPScriptTrace);
+    DPListen(@"com.diapatches.dev.mark", DPScriptMark);
+    DPListen(@"com.diapatches.dev.untrace", DPScriptUntrace);
 }
 
 void DPInstallDevTools(void) {
     if (![[[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"] boolForKey:@"devTools"]) return;
+    DPTraceTo(DPBesideDylib(@"trace.txt"));
     DPListenForScripts();
     DPTraceLayoutLoops();
     DPOnLaunch(^{
