@@ -5,7 +5,11 @@ DPChatConversation *DPChatConversationFor(NSView *view);
 // The hosted composer that contains `view`, or nil.
 NSView *DPChatComposerFor(NSView *view);
 void DPChatInstallInput(void);
-// What was just asked in this window's command bar, taken once and only for a few seconds.
+// Takes a question asked in Dia's command bar to ChatGPT. Each returns YES when it took the event from Dia.
+BOOL DPChatBarKey(NSEvent *event, NSTextView *textView);
+BOOL DPChatBarClick(NSEvent *event, NSView *hit);
+BOOL DPChatBarMouseUp(void);
+// The question waiting for the new chat opened for it in `window`, taken once and only for a few seconds.
 NSString *DPChatTakeAsked(NSWindow *window);
 void DPChatInstallHints(void);
 void DPChatInstallTabs(void);
