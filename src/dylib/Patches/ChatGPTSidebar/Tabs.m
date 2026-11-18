@@ -8,8 +8,9 @@ static NSString *const DPChatThreadsKey = @"chatGPTThreads";  // tab ID: {thread
 static NSUserDefaults *DPChatDefaults(void) { return [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"]; }
 
 @implementation DPChatConversation (Tabs)
-+ (instancetype)forTab:(NSString *)tab window:(NSWindow *)window {
++ (instancetype)forTab:(NSString *)tab window:(NSWindow *)window diaChat:(NSString *)diaChat {
     if (!gChats) gChats = [NSMutableDictionary new];
+    [self move:diaChat toTab:tab];
     DPChatConversation *chat = gChats[tab];
     if (!chat) {
         [self forgetClosedTabs];
@@ -26,7 +27,25 @@ static NSUserDefaults *DPChatDefaults(void) { return [[NSUserDefaults alloc] ini
         chat.windowID = window.identifier;
         if (chat.threadID) [chat saveThread];
     }
+    if (diaChat) chat.diaChat = diaChat;
     return chat;
+}
+
+// Dia moves a chat from a tab's sidebar to a tab of its own, so the ChatGPT chat moves along, saved under the new tab.
++ (void)move:(NSString *)diaChat toTab:(NSString *)tab {
+    if (!diaChat || [gChats[tab].diaChat isEqual:diaChat]) return;
+    for (NSString *from in gChats.allKeys) {
+        DPChatConversation *chat = gChats[from];
+        if ([from isEqual:tab] || ![chat.diaChat isEqual:diaChat]) continue;
+        [gChats[tab] stop];
+        [gChats removeObjectForKey:from];
+        NSString *thread = chat.threadID;
+        chat.threadID = nil;
+        [chat saveThread];
+        chat.threadID = thread, chat.tab = tab, chat.windowID = nil;
+        gChats[tab] = chat;
+        return;
+    }
 }
 
 - (void)saveThread {

@@ -5,6 +5,7 @@
 @property(readwrite) BOOL busy;
 @property(copy) NSString *threadID, *turnID, *queued, *sharedPages;
 @property(copy) NSString *tab, *windowID;  // where the chat is saved
+@property(copy) NSString *diaChat;  // Dia's chat this one stands in for
 @property BOOL resumed, restoring;  // Codex has the thread loaded; waiting to sign in before loading it
 @property(copy) NSArray<NSURL *> *pages;
 @property NSUInteger generation;

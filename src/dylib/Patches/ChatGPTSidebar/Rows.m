@@ -92,8 +92,10 @@ static const CGFloat DPChatUserLine = 23.52, DPChatUserMeta = 32, DPChatCardWidt
     NSTextContainer *container = _text.textContainer;
     container.size = NSMakeSize(MAX(width, 1), CGFLOAT_MAX);
     [_text.layoutManager ensureLayoutForTextContainer:container];
-    NSRect used = [_text.layoutManager usedRectForTextContainer:container];
-    return NSMakeSize(ceil(NSWidth(used)), ceil(NSHeight(used)));
+    NSLayoutManager *layout = _text.layoutManager;
+    // Once the width changes, the used rect spans the whole container, so take the width the glyphs need.
+    NSRect glyphs = [layout boundingRectForGlyphRange:[layout glyphRangeForTextContainer:container] inTextContainer:container];
+    return NSMakeSize(ceil(NSMaxX(glyphs)), ceil(NSHeight([layout usedRectForTextContainer:container])));
 }
 
 - (CGFloat)heightForWidth:(CGFloat)width {

@@ -2,21 +2,15 @@
 
 static void DPChatApply(DPPatch *patch) { DPChatApplyHost(); }
 
-// Dia's chat sidebar panels on screen: the ones with a Hide chat button.
-static NSArray<NSView *> *DPChatPanels(void) {
-    NSMutableArray<NSView *> *panels = [NSMutableArray new];
-    for (NSView *panel in DPFindViews(DPDiaAssistantPanel))
-        if (!panel.isHiddenOrHasHiddenAncestor && DPFindView(panel, ^BOOL(NSView *view) { return DPHasLabel(view, @"Hide chat"); }))
-            [panels addObject:panel];
-    return panels;
-}
-
 static NSString *DPChatVerify(DPPatch *patch) {
-    for (NSView *panel in DPChatPanels()) {
-        NSView *page = DPFindView(panel, ^BOOL(NSView *view) { return DPIsKind(view, "WebContentsHostView"); });
-        NSView *hints = DPFindView(panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaChatHints) && !view.isHiddenOrHasHiddenAncestor; });
+    // Dia's chats on screen, in the sidebar or in their own tab: what holds the prompt queue.
+    for (NSView *queue in DPFindViews(DPDiaChatQueue)) {
+        NSView *chat = queue.superview;
+        if (!chat.window || chat.isHiddenOrHasHiddenAncestor) continue;
+        NSView *page = DPFindView(chat, ^BOOL(NSView *view) { return DPIsKind(view, "WebContentsHostView"); });
+        NSView *hints = DPFindView(chat, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaChatHints) && !view.isHiddenOrHasHiddenAncestor; });
         if (patch->on) {
-            if (!DPFindView(panel, ^BOOL(NSView *view) { return DPIsKind(view, "DPChatTranscript"); })) return @"chat sidebar has no ChatGPT messages";
+            if (!DPFindView(chat, ^BOOL(NSView *view) { return DPIsKind(view, "DPChatTranscript"); })) return @"Dia's chat has no ChatGPT messages";
             if (page && !page.isHiddenOrHasHiddenAncestor) return @"Dia's chat messages still show";
             if (hints.alphaValue > 0) return @"Dia's chat hints still show";
         } else if (page.isHiddenOrHasHiddenAncestor) return @"Dia's chat messages stay hidden after switching off";
@@ -30,11 +24,11 @@ DP_PATCH(DPChatGPTSidebar) {
     .key = @"chatGPTSidebar",
     .order = 94,
     .section = @"AI",
-    .title = @"ChatGPT Sidebar",
-    .detail = @"Dia's chat sidebar answers with ChatGPT, using your ChatGPT sign-in through Codex. The tabs attached in the composer are shared with your message. Requires the Codex app or CLI.",
+    .title = @"Enable ChatGPT",
+    .detail = @"Dia's chat answers with ChatGPT, using your Codex sign-in.",
     .symbol = @"bubble.left.and.text.bubble.right.fill bubble.left.and.bubble.right.fill",
     .tint = @"systemPurpleColor",
-    .classes = DPClasses(DPChatSidebarClass, DPDiaAssistantPanel, DPDiaCommandBar),
+    .classes = DPClasses(DPChatSidebarClass, DPDiaAssistantPanel, DPDiaCommandBar, DPDiaChatQueue),
     .disabledBy = @"turnOffAI",
     .rows = DPChatSettings,
     .install = DPChatInstallHost,

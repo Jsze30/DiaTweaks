@@ -1,5 +1,6 @@
 #import "Host.h"
 #import "Patches/CommandBar/Tabs.h"
+#import "Commands/GroupTabs/GroupTabs.h"
 
 // Swaps only Dia's web-rendered message list for our transcript, keeping its header and composer.
 @interface DPChatHost : NSObject
@@ -78,30 +79,49 @@ static void DPChatDetach(DPChatHost *host) {
     [gHosts removeObject:host];
 }
 
-// panel root > ... > container > { web wrapper > ... > WebContentsHostView, composer > ... > command bar }
+// container > { web wrapper > ... > WebContentsHostView, Dia's prompt queue, composer > ... > command bar }
+// The sidebar and a chat opened in its own tab (full window) both build their chat this way; only the sidebar wraps it in a panel with a header.
 static BOOL DPChatResolve(NSView *root, NSView **panel, NSView **container, NSView **wrapper, NSView **composer) {
-    *panel = DPFindView(root, ^BOOL(NSView *view) {
-        return DPIsKind(view, DPDiaAssistantPanel) && DPFindView(view, ^BOOL(NSView *sub) { return DPHasLabel(sub, @"Hide chat"); });
+    __block NSView *web = nil, *bar = nil;
+    NSView *queue = DPFindView(root, ^BOOL(NSView *view) {
+        if (!DPIsKind(view, DPDiaChatQueue) || view.superview.isHiddenOrHasHiddenAncestor) return NO;
+        web = bar = nil;
+        for (NSView *sibling in view.superview.subviews) {
+            if (!web && DPFindView(sibling, ^BOOL(NSView *sub) { return DPIsKind(sub, "WebContentsHostView"); })) web = sibling;
+            else if (!bar && DPIsKind(sibling, DPDiaAssistantPanel) && DPFindView(sibling, ^BOOL(NSView *sub) { return DPIsKind(sub, DPDiaCommandBar); })) bar = sibling;
+        }
+        return web && bar;
     });
-    NSView *web = DPFindView(*panel, ^BOOL(NSView *view) { return DPIsKind(view, "WebContentsHostView"); });
-    for (NSView *view = web; view && view != *panel; view = view.superview)
-        for (NSView *sibling in view.superview.subviews)
-            if (sibling != view && DPFindView(sibling, ^BOOL(NSView *sub) { return DPIsKind(sub, DPDiaCommandBar); })) {
-                *container = view.superview, *wrapper = view, *composer = sibling;
-                return YES;
-            }
-    return NO;
+    if (!queue) return NO;
+    *container = queue.superview, *wrapper = web, *composer = bar, *panel = nil;
+    for (NSView *view = queue.superview.superview; view && !*panel; view = view.superview)
+        if (DPIsKind(view, DPDiaAssistantPanel)) *panel = view;
+    return YES;
+}
+
+// Dia's ID for the chat that `wrapper` shows: the sidebar loads it as ...?blindID=<id>, a chat in its own tab as dia://assistant/<space>/<id>.
+static NSString *DPChatDiaID(NSView *wrapper) {
+    id browser = DPBrowserOfWindow(wrapper.window);
+    for (id contents in browser ? DPTrackedContents(browser) : @[]) {
+        NSView *view = [contents respondsToSelector:@selector(nativeView)] ? DPMsg(contents, @selector(nativeView)) : nil;
+        if (![view isKindOfClass:NSView.class] || ![view isDescendantOf:wrapper]) continue;
+        id address = [contents respondsToSelector:@selector(url)] ? DPMsg(contents, @selector(url)) : nil;
+        NSURLComponents *url = [NSURLComponents componentsWithString:[address isKindOfClass:NSURL.class] ? [address absoluteString] : [address description]];
+        for (NSURLQueryItem *item in url.queryItems) if ([item.name isEqual:@"blindID"]) return item.value;
+        return [url.scheme isEqual:@"dia"] && [url.host isEqual:@"assistant"] ? url.path.lastPathComponent : nil;
+    }
+    return nil;
 }
 
 static void DPChatAttach(NSViewController *sidebar) {
     if (!DPChatGPTSidebar.on || !sidebar.viewLoaded) return;
     NSView *panel = nil, *container = nil, *wrapper = nil, *composer = nil;
     if (!DPChatResolve(sidebar.view, &panel, &container, &wrapper, &composer) || !container.window) return;
-    NSString *tab = DPActiveTabID(container.window);  // The sidebar on screen is the front tab's.
+    NSString *tab = DPActiveTabID(container.window);  // The chat on screen is the front tab's: in its sidebar, or the tab itself in full window.
     if (!tab) return;
     DPChatHost *previous = DPGet(sidebar, &gHostKey), *host = DPGet(container, &gHostKey);
     if (host && host.window != container.window) DPChatDetach(host), host = nil;  // Dia moved the panel to another window.
-    DPChatConversation *chat = [DPChatConversation forTab:tab window:container.window];
+    DPChatConversation *chat = [DPChatConversation forTab:tab window:container.window diaChat:DPChatDiaID(wrapper)];
     // A window has one sidebar, and each tab keeps its own chat view in it, so another tab's view stays as it is.
     // A new chat view for the same tab means Dia started a new chat (button, menu or shortcut).
     if (previous && previous != host && [previous.tab isEqual:tab]) {
@@ -121,7 +141,7 @@ static void DPChatAttach(NSViewController *sidebar) {
     if (host.conversation != chat) host.conversation = host.transcript.conversation = chat;
     host.sidebar = sidebar, host.panel = panel, host.composer = composer, host.tab = tab;
     DPSet(sidebar, &gHostKey, host);
-    DPSet(panel, &gHostKey, host);
+    if (panel) DPSet(panel, &gHostKey, host);  // Only the sidebar has one.
     NSArray<NSView *> *subviews = container.subviews;
     if (host.transcript.superview != container || [subviews indexOfObject:host.transcript] > [subviews indexOfObject:composer]) {
         [host.transcript removeFromSuperview];
