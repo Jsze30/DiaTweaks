@@ -8,8 +8,10 @@ static NSString *DPChatTyped(NSDictionary *item) {
     NSMutableString *text = [NSMutableString new];
     for (NSDictionary *part in [item[@"content"] isKindOfClass:NSArray.class] ? item[@"content"] : @[])
         if ([part isKindOfClass:NSDictionary.class] && [part[@"text"] isKindOfClass:NSString.class]) [text appendString:part[@"text"]];
-    NSRange pages = [text rangeOfString:@"\n\n<page>\n"];
-    return pages.location == NSNotFound ? text : [text substringToIndex:pages.location];
+    // What follows the typed text is the pages and the time, which the user never typed.
+    NSUInteger end = text.length;
+    for (NSString *mark in @[@"\n\n<page>\n", @"\n\n<context>\n"]) end = MIN(end, [text rangeOfString:mark].location);
+    return [text substringToIndex:end];
 }
 
 @implementation DPChatConversation (Restore)

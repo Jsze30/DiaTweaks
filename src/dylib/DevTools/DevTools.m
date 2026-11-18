@@ -89,7 +89,7 @@ static void DPScriptClick(NSNotification *note) {
 
 // Focuses the front window's first visible view whose class name contains this text.
 static void DPScriptFocus(NSNotification *note) {
-    NSWindow *window = NSApp.keyWindow ?: NSApp.mainWindow;
+    NSWindow *window = NSApp.keyWindow ?: NSApp.mainWindow ?: NSApp.orderedWindows.firstObject;  // works with Dia in the background
     NSView *view = DPFindView(window.contentView.superview, ^BOOL(NSView *candidate) {
         return [NSStringFromClass(candidate.class) containsString:note.object] && !candidate.isHiddenOrHasHiddenAncestor && candidate.acceptsFirstResponder;
     });
@@ -114,7 +114,7 @@ static void DPScriptMenu(NSNotification *note) {
 
 // Presses Return in the front window, as a real key press would.
 static void DPScriptReturn(NSNotification *note) {
-    NSWindow *window = NSApp.keyWindow ?: NSApp.mainWindow;
+    NSWindow *window = NSApp.keyWindow ?: NSApp.mainWindow ?: NSApp.orderedWindows.firstObject;  // works with Dia in the background
     NSEventType types[] = {NSEventTypeKeyDown, NSEventTypeKeyUp};
     for (int i = 0; i < 2; i++)
         [NSApp postEvent:[NSEvent keyEventWithType:types[i] location:NSZeroPoint modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
