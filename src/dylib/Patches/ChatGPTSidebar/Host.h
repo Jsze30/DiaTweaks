@@ -9,7 +9,9 @@ void DPChatInstallInput(void);
 BOOL DPChatBarKey(NSEvent *event, NSTextView *textView);
 BOOL DPChatBarClick(NSEvent *event, NSView *hit);
 BOOL DPChatBarMouseUp(void);
-// The question waiting for the new chat opened for it in `window`, taken once and only for a few seconds.
+// The chat shown in `window`'s sidebar for its front tab, or nil.
+DPChatConversation *DPChatShownIn(NSWindow *window);
+// The question waiting for the chat opened for it in `window`, taken once and only for a few seconds.
 NSString *DPChatTakeAsked(NSWindow *window);
 void DPChatInstallHints(void);
 void DPChatInstallTabs(void);

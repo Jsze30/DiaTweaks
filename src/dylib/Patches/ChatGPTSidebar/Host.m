@@ -130,12 +130,8 @@ static void DPChatAttach(NSViewController *sidebar) {
     if (!NSEqualRects(host.transcript.frame, container.bounds)) host.transcript.frame = container.bounds;
     [host setWrapper:wrapper restore:YES];
     [host enforce];
-    // The new chat opened for a question from the command bar is a chat tab, the one kind of tab with no web address.
-    id url = [DPScriptTab(container.window, tab) valueForKey:@"URL"];
-    if (!chat.messages.count && !chat.busy && !([url isKindOfClass:NSString.class] && [url length])) {
-        NSString *asked = DPChatTakeAsked(container.window);
-        if (asked.length) [chat send:asked pages:@[]];
-    }
+    NSString *asked = DPChatTakeAsked(container.window);  // the chat was opened for a question from the command bar
+    if (asked.length) [chat send:asked pages:@[]];
     DPChatClearHints(container);
 }
 
@@ -149,6 +145,13 @@ static void DPChatSidebar_viewWillLayout(NSViewController *self, SEL _cmd) {
 static void DPChatComposer_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     DPCallOriginal(DPChatComposer_viewDidMoveToWindow, self);
     if (self.window && DPChatGPTSidebar.on) dispatch_async(dispatch_get_main_queue(), ^{ DPChatApplyHost(); });
+}
+
+DPChatConversation *DPChatShownIn(NSWindow *window) {
+    NSString *tab = DPActiveTabID(window);
+    for (DPChatHost *host in gHosts.allObjects)
+        if (host.transcript.window == window && !host.transcript.isHiddenOrHasHiddenAncestor && [host.tab isEqual:tab]) return host.conversation;
+    return nil;
 }
 
 DPChatConversation *DPChatConversationFor(NSView *view) {

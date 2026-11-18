@@ -2,7 +2,7 @@
 
 // Asking from Dia's command bar (such as on a new tab) sends the question straight to Dia's own AI, in a new chat.
 // Its dispatch is Swift with nothing to hook, so the question is taken at the bar instead: Dia never gets it, and
-// Dia's New Chat opens the chat that ChatGPT then answers in.
+// ChatGPT answers it in the window's chat.
 
 static NSString *gAsked;
 static __weak NSWindow *gAskedWindow;
@@ -34,17 +34,24 @@ static NSString *DPChatBarText(NSView *bar) {
     return [typed stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
 }
 
-static void DPChatAskInNewChat(NSView *bar) {
+static void DPChatAsk(NSView *bar) {
     NSString *text = DPChatBarText(bar);
     NSWindow *window = bar.window;
     if (!text.length || !window) return;
-    gAsked = text, gAskedWindow = window, gAskedAt = CACurrentMediaTime();
+    // Escape closes the bar as if the user had, and the Command Bar tweak closes the new tab it opened. Not from inside the event.
     dispatch_async(dispatch_get_main_queue(), ^{
-        // Escape closes the bar as if the user had, then Dia opens a new chat in this window.
         for (int up = 0; up < 2; up++)
             [NSApp sendEvent:[NSEvent keyEventWithType:up ? NSEventTypeKeyUp : NSEventTypeKeyDown location:NSZeroPoint modifierFlags:0
                                              timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:window.windowNumber context:nil
                                             characters:@"\e" charactersIgnoringModifiers:@"\e" isARepeat:NO keyCode:53]];
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        DPChatConversation *shown = DPChatShownIn(window);
+        if (shown) return [shown send:text pages:@[]];
+        // Otherwise the chat opens beside the tab the bar left, or as Dia's New Chat, and takes the question as it shows.
+        gAsked = text, gAskedWindow = window, gAskedAt = CACurrentMediaTime();
+        NSView *open = DPFindView(window.contentView.superview, ^BOOL(NSView *view) { return DPHasLabel(view, @"Chat with this tab") && !view.isHiddenOrHasHiddenAncestor; });
+        if (open) return (void)[open accessibilityPerformPress];
         NSMenuItem *newChat = [[NSApp.mainMenu itemWithTitle:@"File"].submenu itemWithTitle:@"New Chat"];
         if (newChat.action) [NSApp sendAction:newChat.action to:newChat.target from:newChat];
     });
@@ -60,7 +67,7 @@ BOOL DPChatBarKey(NSEvent *event, NSTextView *textView) {
     });
     BOOL asks = mods == (NSEventModifierFlagControl | NSEventModifierFlagCommand) || (!mods && (chosen ? DPChatAsks(chosen) : DPChatAsks(bar)));
     if (!asks || !DPChatBarText(bar).length) return NO;
-    DPChatAskInNewChat(bar);
+    DPChatAsk(bar);
     return YES;
 }
 
@@ -72,7 +79,7 @@ BOOL DPChatBarClick(NSEvent *event, NSView *hit) {
         BOOL row = [view isKindOfClass:NSTableRowView.class] && DPChatAsks(view);
         BOOL button = DPIsKind(view, "_TtC15BoostCommandBar13ToolbarButton") && [view.accessibilityTitle hasPrefix:@"Chat"];
         if (!row && !button) continue;
-        DPChatAskInNewChat(bar);
+        DPChatAsk(bar);
         gSwallowMouseUp = YES;
         return YES;
     }
