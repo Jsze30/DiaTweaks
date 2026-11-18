@@ -16,8 +16,15 @@
         NSString *method = message[@"method"];
         id identifier = message[@"id"];
         if (method && identifier) {
-            // This is a chat client. Never approve command execution, file changes, or external tool requests.
-            [self write:@{@"id": identifier, @"error": @{@"code": @(-32601), @"message": @"Tools are not available in the browser chat."}}];
+            __weak DPChatClient *weak = self;
+            NSTask *task = self.task;
+            DPChatReply reply = ^(NSDictionary *result, NSString *error) {
+                if (weak.task != task) return;  // Codex restarted, so nobody is waiting for the answer.
+                [weak write:error ? @{@"id": identifier, @"error": @{@"code": @(-32601), @"message": error}} : @{@"id": identifier, @"result": result}];
+            };
+            NSDictionary *params = [message[@"params"] isKindOfClass:NSDictionary.class] ? message[@"params"] : @{};
+            if (self.serve && [method isKindOfClass:NSString.class]) self.serve(method, params, reply);
+            else reply(nil, @"Tools are not available in the browser chat.");
         } else if (identifier) {
             DPChatReply done = self.pending[identifier];
             [self.pending removeObjectForKey:identifier];

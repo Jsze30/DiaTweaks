@@ -9,7 +9,12 @@
     DPChatMessage *last = self.messages.lastObject;
     if (!last || last.fromUser) return;
     if ([method isEqual:@"turn/started"] && [params[@"turn"] isKindOfClass:NSDictionary.class]) self.turnID = params[@"turn"][@"id"];
-    else if ([method isEqual:@"item/agentMessage/delta"] && [params[@"delta"] isKindOfClass:NSString.class]) {
+    // A turn that uses tools can say something before them; the next message replaces it, so only the answer stays.
+    else if ([method isEqual:@"item/started"] && [params[@"item"] isKindOfClass:NSDictionary.class] && [params[@"item"][@"type"] isEqual:@"agentMessage"]) {
+        if (!last.text.length) return;
+        last.text = @"";
+        [self notify:YES];
+    } else if ([method isEqual:@"item/agentMessage/delta"] && [params[@"delta"] isKindOfClass:NSString.class]) {
         if (last.text.length + [params[@"delta"] length] > 1000000) return [self stop];
         last.text = [last.text stringByAppendingString:params[@"delta"]];
         [self notify:YES];
