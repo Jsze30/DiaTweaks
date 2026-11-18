@@ -73,6 +73,38 @@ static void DPScriptMethods(NSNotification *note) {
     [out writeToFile:DPBesideDylib(@"methods.txt") atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
+// Clicks the front window's view with this accessibility label, as a real click would, so event monitors see it.
+static void DPScriptClick(NSNotification *note) {
+    NSWindow *window = NSApp.keyWindow ?: NSApp.mainWindow ?: NSApp.orderedWindows.firstObject;
+    NSView *view = DPFindView(window.contentView.superview, ^BOOL(NSView *candidate) {
+        return DPHasLabel(candidate, note.object) && !candidate.isHiddenOrHasHiddenAncestor && NSWidth(candidate.bounds) > 0;
+    });
+    if (!view) return;
+    NSPoint point = [view convertPoint:NSMakePoint(NSMidX(view.bounds), NSMidY(view.bounds)) toView:nil];
+    NSEventType types[] = {NSEventTypeLeftMouseDown, NSEventTypeLeftMouseUp};
+    for (int i = 0; i < 2; i++)
+        [NSApp postEvent:[NSEvent mouseEventWithType:types[i] location:point modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
+                                         windowNumber:window.windowNumber context:nil eventNumber:0 clickCount:1 pressure:i ? 0 : 1] atStart:NO];
+}
+
+// Focuses the front window's first visible view whose class name contains this text.
+static void DPScriptFocus(NSNotification *note) {
+    NSWindow *window = NSApp.keyWindow ?: NSApp.mainWindow;
+    NSView *view = DPFindView(window.contentView.superview, ^BOOL(NSView *candidate) {
+        return [NSStringFromClass(candidate.class) containsString:note.object] && !candidate.isHiddenOrHasHiddenAncestor && candidate.acceptsFirstResponder;
+    });
+    if (view) [window makeFirstResponder:view];
+}
+
+// Presses Return in the front window, as a real key press would.
+static void DPScriptReturn(NSNotification *note) {
+    NSWindow *window = NSApp.keyWindow ?: NSApp.mainWindow;
+    NSEventType types[] = {NSEventTypeKeyDown, NSEventTypeKeyUp};
+    for (int i = 0; i < 2; i++)
+        [NSApp postEvent:[NSEvent keyEventWithType:types[i] location:NSZeroPoint modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
+                                      windowNumber:window.windowNumber context:nil characters:@"\r" charactersIgnoringModifiers:@"\r" isARepeat:NO keyCode:36] atStart:NO];
+}
+
 static void DPScriptDump(NSNotification *note) {
     NSMutableString *out = [NSMutableString new];
     for (NSWindow *window in NSApp.windows)
@@ -90,6 +122,9 @@ static void DPListenForScripts(void) {
     DPListen(@"com.diapatches.dev.type", DPScriptType);
     DPListen(@"com.diapatches.dev.methods", DPScriptMethods);
     DPListen(@"com.diapatches.dev.dump", DPScriptDump);
+    DPListen(@"com.diapatches.dev.click", DPScriptClick);
+    DPListen(@"com.diapatches.dev.return", DPScriptReturn);
+    DPListen(@"com.diapatches.dev.focus", DPScriptFocus);
 }
 
 void DPInstallDevTools(void) {

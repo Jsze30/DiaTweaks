@@ -8,6 +8,7 @@ extern DPPatch DPChatGPTSidebar;
 @interface DPChatService : NSObject
 @property(readonly) DPChatClient *client;
 @property(readonly) BOOL connecting, signedIn, signingIn;
+@property(readonly) BOOL checked;  // the account has been read at least once
 @property(readonly, copy) NSString *problem;
 + (instancetype)shared;
 - (void)connect;
@@ -54,6 +55,9 @@ extern NSNotificationName const DPChatServiceEvent;  // userInfo: method, params
 @property(weak) DPChatConversation *conversation;
 - (instancetype)initWithConversation:(DPChatConversation *)conversation;
 - (void)reload;
+@property(readonly) NSImage *parting;  // how it looked as it last left its window, in that window's coordinates
+@property(readonly) NSRect partingFrame;
+- (void)takeOverFrom:(NSImage *)picture frame:(NSRect)frame;
 @end
 
 void DPChatInstallHost(void);

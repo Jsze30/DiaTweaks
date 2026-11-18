@@ -12,6 +12,8 @@ static const CGFloat DPChatUserLine = 23.52, DPChatUserMeta = 32, DPChatCardWidt
     DPChatCard *_card;
     DPChatCopy *_copy;
     NSString *_shown, *_page;
+    DPChatPage *_pageShown;
+    NSImage *_iconShown;
     BOOL _user, _failed, _pending;
     CGFloat _width, _height;
 }
@@ -31,6 +33,8 @@ static const CGFloat DPChatUserLine = 23.52, DPChatUserMeta = 32, DPChatCardWidt
     _text.drawsBackground = NO;
     _text.textContainerInset = NSZeroSize;
     _text.verticallyResizable = _text.horizontallyResizable = NO;
+    _text.wantsLayer = YES;
+    self.wantsLayer = YES;
     _bubble = [NSView new];
     _bubble.wantsLayer = YES;
     _bubble.layer.cornerCurve = kCACornerCurveContinuous;
@@ -44,11 +48,16 @@ static const CGFloat DPChatUserLine = 23.52, DPChatUserMeta = 32, DPChatCardWidt
 
 - (void)show:(DPChatMessage *)message {
     NSString *text = message.text ?: @"", *page = message.fromUser ? message.page.url : nil;
+    DPChatPage *pageShown = message.fromUser ? message.page : nil;
     if (_shown && (_shown == text || [_shown isEqualToString:text]) && _user == message.fromUser && _failed == message.failed &&
-        _pending == message.pending && (_page == page || [_page isEqualToString:page]))
+        _pending == message.pending && (_page == page || [_page isEqualToString:page]) && _pageShown == pageShown && _iconShown == pageShown.icon)
         return;
+    BOOL wasThinking = _shown && !_user && _pending && !_shown.length, copyWasHidden = !_copy || _copy.hidden;
+    BOOL cardChanged = _pageShown && pageShown && (_pageShown != pageShown || _iconShown != pageShown.icon);
     _shown = text;
     _page = page;
+    _pageShown = pageShown;
+    _iconShown = pageShown.icon;
     _user = message.fromUser;
     _failed = message.failed;
     _pending = message.pending;
@@ -56,11 +65,18 @@ static const CGFloat DPChatUserLine = 23.52, DPChatUserMeta = 32, DPChatCardWidt
     _bubble.hidden = !_user;
     if (page && !_card) [self addSubview:(_card = [DPChatCard new])];
     _card.hidden = !page;
-    if (page) [_card show:message];
+    if (page) {
+        if (cardChanged) DPChatFade(_card.layer, 0.2);  // The page was read: its real title and icon replace the address.
+        [_card show:message];
+    }
     BOOL done = !_user && !_failed && !_pending && text.length;
     if (done && !_copy) [self addSubview:(_copy = [DPChatCopy new])];
     _copy.hidden = !done;
     _copy.text = text;
+    if (done && copyWasHidden) DPChatAppear(_copy.layer, 0.25, 0.1, 0);
+    BOOL thinking = !_user && !_failed && _pending && !text.length;
+    DPChatPulse(_text.layer, thinking);
+    if (wasThinking && !thinking) DPChatAppear(_text.layer, 0.3, 0, 4);
     NSAttributedString *shown;
     if (_user) {
         NSFont *font = [NSFont systemFontOfSize:14];
@@ -71,10 +87,10 @@ static const CGFloat DPChatUserLine = 23.52, DPChatUserMeta = 32, DPChatCardWidt
     } else if (_failed || (_pending && !text.length)) {
         NSMutableParagraphStyle *style = [NSMutableParagraphStyle new];
         style.lineHeightMultiple = 1.2;
-        shown = [[NSAttributedString alloc] initWithString:text.length ? text : @"Thinking…" attributes:@{
+        shown = [[NSAttributedString alloc] initWithString:text.length ? text : @"Thinking" attributes:@{
             NSFontAttributeName: [NSFont systemFontOfSize:_failed ? 13 : 12], NSParagraphStyleAttributeName: style,
-            NSForegroundColorAttributeName: _failed ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor}];
-    } else shown = DPChatMarkdown(text, 14);
+            NSForegroundColorAttributeName: NSColor.secondaryLabelColor}];
+    } else shown = DPChatMarkdown(text, 15);
     [_text.textStorage setAttributedString:shown];
 }
 

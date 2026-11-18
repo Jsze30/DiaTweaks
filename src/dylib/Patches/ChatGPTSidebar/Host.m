@@ -1,4 +1,5 @@
 #import "Host.h"
+#import "Transcript.h"
 #import "Patches/CommandBar/Tabs.h"
 #import "Commands/GroupTabs/GroupTabs.h"
 
@@ -125,8 +126,15 @@ static void DPChatAttach(NSViewController *sidebar) {
     // A window has one sidebar, and each tab keeps its own chat view in it, so another tab's view stays as it is, and so does
     // another live view of this tab: swapping between them on every layout is a loop AppKit ends by crashing Dia.
     // Only a new view after Dia took this tab's old one out of the window means it started a new chat (button, menu or shortcut).
-    if (previous && previous != host && [previous.tab isEqual:tab] && !previous.container.window) {
-        if (previous.window == container.window) [chat reset];
+    NSImage *handoff = nil;
+    NSRect handoffFrame = NSZeroRect;
+    BOOL newChat = previous && previous != host && [previous.tab isEqual:tab] && !previous.container.window;
+    if (newChat) {
+        if (previous.window == container.window) {
+            // The old view is already out of the window, so fade out the picture it left on its way out.
+            if (chat.messages.count) handoff = previous.transcript.parting, handoffFrame = previous.transcript.partingFrame;
+            [chat reset];
+        }
         DPChatDetach(previous);
     }
     if (!host) {
@@ -151,6 +159,7 @@ static void DPChatAttach(NSViewController *sidebar) {
     if (!NSEqualRects(host.transcript.frame, container.bounds)) host.transcript.frame = container.bounds;
     [host setWrapper:wrapper restore:YES];
     [host enforce];
+    if (newChat) [host.transcript takeOverFrom:handoff frame:[host.transcript convertRect:handoffFrame fromView:nil]];
     NSString *asked = DPChatTakeAsked(container.window);  // the chat was opened for a question from the command bar
     if (asked.length) [chat send:asked pages:@[]];
     DPChatClearHints(container);

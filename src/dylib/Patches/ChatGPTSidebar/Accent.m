@@ -5,6 +5,13 @@
     CALayer *_layer;
 }
 
+// Dia greys its send button while the field is empty, which is right after every send; keep the space's color from before.
+static NSMapTable<NSWindow *, NSColor *> *DPChatAccents(void) {
+    static NSMapTable *accents;
+    if (!accents) accents = [NSMapTable weakToStrongObjectsMapTable];
+    return accents;
+}
+
 - (void)dealloc { [_layer removeObserver:self forKeyPath:@"backgroundColor"]; }
 
 - (void)observeValueForKeyPath:(NSString *)path ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
@@ -25,8 +32,12 @@
     }
     CGColorRef fill = send.layer.backgroundColor;
     NSColor *accent = fill ? [[NSColor colorWithCGColor:fill] colorUsingColorSpace:NSColorSpace.sRGBColorSpace] : nil;
+    BOOL colored = accent.alphaComponent >= 0.05 && accent.saturationComponent >= 0.12;
+    BOOL enabled = ![send isKindOfClass:NSControl.class] || ((NSControl *)send).enabled;
+    if (colored && transcript.window) [DPChatAccents() setObject:accent forKey:transcript.window];
+    else if (!enabled && transcript.window) accent = [DPChatAccents() objectForKey:transcript.window];
     // Dia washes a neutral space's bubbles with 6% of the text color, as it does with no color at all.
-    if (accent.alphaComponent < 0.05 || accent.saturationComponent < 0.12) return [NSColor.labelColor colorWithAlphaComponent:0.06];
+    if (!accent || accent.alphaComponent < 0.05 || accent.saturationComponent < 0.12) return [NSColor.labelColor colorWithAlphaComponent:0.06];
     BOOL dark = [[transcript.effectiveAppearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]] isEqual:NSAppearanceNameDarkAqua];
     return [accent colorWithAlphaComponent:dark ? 0.30 : 0.25];
 }

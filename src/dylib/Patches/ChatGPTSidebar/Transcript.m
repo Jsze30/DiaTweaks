@@ -10,7 +10,7 @@ static const CGFloat DPChatColumn = 596, DPChatSide = 28, DPChatGap = 16, DPChat
     DPChatEmpty *_empty;
     NSMutableArray<DPChatRow *> *_rows;
     NSColor *_bubble;
-    BOOL _scheduled;
+    BOOL _scheduled, _live, _glide;
     CFTimeInterval _shown;
 }
 
@@ -22,6 +22,8 @@ static const CGFloat DPChatColumn = 596, DPChatSide = 28, DPChatGap = 16, DPChat
     _rows = [NSMutableArray new];
     _scroll = [DPChatScroll new];
     _empty = [DPChatEmpty new];
+    _empty.wantsLayer = YES;
+    self.wantsLayer = YES;
     [self addSubview:_scroll];
     [self addSubview:_empty];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(serviceChanged) name:DPChatServiceDidChange object:nil];
@@ -56,18 +58,34 @@ static const CGFloat DPChatColumn = 596, DPChatSide = 28, DPChatGap = 16, DPChat
     _scheduled = NO;
     _shown = CACurrentMediaTime();
     NSArray<DPChatMessage *> *messages = _chat.messages ?: @[];
-    if (messages.count > _rows.count) _scroll.pinned = YES;
+    BOOL wasEmpty = !_empty.hidden, empty = !messages.count;
+    // Moving between the new-chat screen and a chat crossfades; a restored chat just shows.
+    if (_live && wasEmpty != empty) DPChatFade(self.layer, 0.22);
+    if (messages.count > _rows.count) _scroll.pinned = YES, _glide = _live;
     while (_rows.count > messages.count) { [_rows.lastObject removeFromSuperview]; [_rows removeLastObject]; }
-    while (_rows.count < messages.count) { [_rows addObject:[DPChatRow new]]; [_scroll.documentView addSubview:_rows.lastObject]; }
+    while (_rows.count < messages.count) {
+        DPChatRow *row = [DPChatRow new];
+        [_rows addObject:row];
+        [_scroll.documentView addSubview:row];
+        if (_live) DPChatAppear(row.layer, 0.32, 0, 8);
+    }
     if (!_bubble) _bubble = [_accent bubbleFor:self];
     [messages enumerateObjectsUsingBlock:^(DPChatMessage *message, NSUInteger i, BOOL *stop) {
         DPChatRow *row = self->_rows[i];
         [row show:message];
         if (row.bubbleColor != self->_bubble) row.bubbleColor = self->_bubble;
     }];
-    _scroll.hidden = !messages.count;
-    _empty.hidden = messages.count > 0;
+    _scroll.hidden = empty;
+    _empty.hidden = !empty;
+    if (_live && empty && !wasEmpty) DPChatAppear(_empty.layer, 0.36, 0.06, 6);
     self.needsLayout = YES;
+}
+
+// Dia swaps in a new chat view for New chat: fade the old chat out over the new one as the new-chat screen rises in.
+- (void)takeOverFrom:(NSImage *)picture frame:(NSRect)frame {
+    [self layoutSubtreeIfNeeded];
+    DPChatFadeAway(self, picture, NSIsEmptyRect(frame) ? self.bounds : frame, 0.2);
+    if (!_empty.hidden) DPChatAppear(_empty.layer, 0.36, 0.08, 6);
 }
 
 - (void)viewDidChangeEffectiveAppearance {
@@ -76,9 +94,23 @@ static const CGFloat DPChatColumn = 596, DPChatSide = 28, DPChatGap = 16, DPChat
     dispatch_async(dispatch_get_main_queue(), ^{ [weak reload]; });
 }
 
+- (void)viewWillMoveToWindow:(NSWindow *)window {
+    if (!window && self.window && self.conversation.messages.count)
+        _parting = DPChatPicture(self), _partingFrame = [self convertRect:self.bounds toView:nil];
+    [super viewWillMoveToWindow:window];
+}
+
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
-    if (self.window) [self reload];
+    _live = NO;
+    if (!self.window) return;
+    [self reload];
+    // What's already there when the view shows (a restored chat) appears at once; what comes after moves.
+    __weak DPChatTranscript *weak = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        DPChatTranscript *strong = weak;
+        if (strong.window) strong->_live = YES;
+    });
 }
 
 // Dia animates the container's subviews to sizes it picked before the container settled, so always fill it.
@@ -109,6 +141,7 @@ static const CGFloat DPChatColumn = 596, DPChatSide = 28, DPChatGap = 16, DPChat
         CGFloat height = [_empty heightForWidth:width];
         _empty.frame = NSMakeRect(x, floor(bottom + (NSHeight(self.bounds) - bottom - height) / 2), width, height);
     }
-    [_scroll follow];
+    [_scroll follow:_glide];
+    _glide = NO;
 }
 @end

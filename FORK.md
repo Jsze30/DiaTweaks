@@ -21,7 +21,10 @@ Only the message list is replaced with a native one that streams ChatGPT's repli
 - A favorite's chip keeps its saved URL, so when no page matches it exactly, the open page on the same site is read instead.
 - Each tab has its own chat, which survives tab switches and Dia restarts.
 - New chat starts the tab's chat over, and closing the tab clears it.
-- A question asked in Dia's command bar, such as on a new tab, is answered by ChatGPT in the chat it opens.
+- ChatGPT can search the web live.
+- ChatGPT can use your ChatGPT apps to read, but any action that would send or change something is declined.
+- ChatGPT can list and read your open tabs, open new tabs, and search your browsing history.
+- A question asked in Dia's command bar, such as on a new tab, is answered by ChatGPT in the window's chat beside that tab.
 - Full window (View Options > Open in New Tab) shows the same chat: Dia moves its chat into a tab of its own, and the ChatGPT chat moves with it.
 
 Turn on Enable ChatGPT in Dia Settings, under the AI section.
@@ -44,7 +47,9 @@ Instead, the tweak:
 - Finds Dia's chat by its prompt queue, which both the sidebar and the full-window tab have, and follows Dia's chat ID when Dia moves the chat to a tab.
 - Stops a reply on Escape.
 
-Codex runs with tools, shell, web search, MCP servers and history all turned off, so it can only chat.
+Codex runs with live web search, ChatGPT apps, and the tab and history tools, which Dia answers.
+Each app call asks first: read-only calls run, and anything that sends or changes something is declined.
+Shell, MCP servers, browser and computer use, and Codex history stay off, and the sandbox is read-only.
 Page text is marked as untrusted, so the model treats it as material, not instructions.
 
 ## Files
@@ -59,6 +64,9 @@ Everything lives in `src/dylib/Patches/ChatGPTSidebar/`:
 - `Card.m`, `Copy.m`, `Tip.m`, `Accent.m`, `Hover.m`, `Icons.m`: the shared page's card, the Copy button, the new-chat tips, the space's bubble color, and the hover buttons and Phosphor icons they use.
 - `Markdown.m`, `Inline.m`: Markdown rendering.
 - `Page.m`, `Attachments.swift`: find the tabs attached in the composer and read their text.
+- `Tools.m`: the tab and history tools, and the read-only check on app calls.
+- `Ask.m`: takes a question from Dia's command bar and hands it to ChatGPT.
+- `Motion.m`: the chat's fades and rises.
 - `Settings.m`: Sign Out and Choose Codex buttons.
 
 ## Status
@@ -68,4 +76,3 @@ Tested inside Dia: ChatGPT replies in the sidebar, the new look, the page card f
 Per-tab chats, New chat, restarts and favorites were checked inside Dia as each fix was built, but not re-tested together after merging.
 The command bar question hand-off is new and has only been lightly tested.
 Full window was tested inside Dia: the chat moves from the sidebar to its own tab with its messages, at Dia's own column width.
-Not done yet: letting ChatGPT use tools.
