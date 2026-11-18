@@ -1,4 +1,5 @@
 #import "Host.h"
+#import "Transcript.h"
 #import "Patches/CommandBar/Tabs.h"
 
 // Swaps only Dia's web-rendered message list for our transcript, keeping its header and composer.
@@ -104,8 +105,17 @@ static void DPChatAttach(NSViewController *sidebar) {
     DPChatConversation *chat = [DPChatConversation forTab:tab window:container.window];
     // A window has one sidebar, and each tab keeps its own chat view in it, so another tab's view stays as it is.
     // A new chat view for the same tab means Dia started a new chat (button, menu or shortcut).
-    if (previous && previous != host && [previous.tab isEqual:tab]) {
-        if (previous.window == container.window) [chat reset];
+    NSImage *handoff = nil;
+    NSRect handoffFrame = NSZeroRect;
+    BOOL newChat = previous && previous != host && [previous.tab isEqual:tab];
+    if (newChat) {
+        if (previous.window == container.window) {
+            if (chat.messages.count && previous.transcript.window) {
+                handoff = DPChatPicture(previous.transcript);
+                handoffFrame = [previous.transcript convertRect:previous.transcript.bounds toView:nil];
+            }
+            [chat reset];
+        }
         DPChatDetach(previous);
     }
     if (!host) {
@@ -130,6 +140,7 @@ static void DPChatAttach(NSViewController *sidebar) {
     if (!NSEqualRects(host.transcript.frame, container.bounds)) host.transcript.frame = container.bounds;
     [host setWrapper:wrapper restore:YES];
     [host enforce];
+    if (newChat) [host.transcript takeOverFrom:handoff frame:[host.transcript convertRect:handoffFrame fromView:nil]];
     // Dia opens a question from its command bar in a chat tab, the one kind of tab with no web address.
     id url = [DPScriptTab(container.window, tab) valueForKey:@"URL"];
     if (!chat.messages.count && !chat.busy && !([url isKindOfClass:NSString.class] && [url length])) {

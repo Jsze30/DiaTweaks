@@ -18,3 +18,5 @@
 - (void)restore;
 - (void)resume:(void (^)(void))done;
 @end
+
+void DPChatTrace(NSString *step);

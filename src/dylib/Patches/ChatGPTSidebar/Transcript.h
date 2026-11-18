@@ -10,7 +10,7 @@
 // Scrolls the messages, and follows the newest one until the user scrolls up.
 @interface DPChatScroll : NSScrollView
 @property BOOL pinned;
-- (void)follow;
+- (void)follow:(BOOL)glide;
 @end
 
 // What shows before the first message: sign-in, or a hint once signed in.
@@ -54,3 +54,10 @@ NSColor *DPChatCodeFill(void);
 NSAttributedString *DPChatInline(NSString *text, CGFloat size, NSFontWeight weight, NSDictionary *base);
 // Line height and the baseline shift that centers text in it, as CSS does.
 NSDictionary *DPChatLine(NSFont *font, CGFloat height, NSMutableParagraphStyle *style);
+
+// Motion, all on one curve and skipped when Reduce Motion is on.
+void DPChatFade(CALayer *layer, CFTimeInterval duration);  // crossfades the layer's next change
+void DPChatAppear(CALayer *layer, CFTimeInterval duration, CFTimeInterval delay, CGFloat rise);
+void DPChatPulse(CALayer *layer, BOOL on);
+void DPChatFadeAway(NSView *over, NSImage *picture, NSRect frame, CFTimeInterval duration);
+NSImage *DPChatPicture(NSView *view);

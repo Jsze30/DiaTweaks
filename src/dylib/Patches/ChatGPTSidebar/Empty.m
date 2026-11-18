@@ -91,6 +91,13 @@ static NSTextField *DPChatLabel(CGFloat size, NSColor *ink) {
         NSFontAttributeName: [NSFont systemFontOfSize:13 weight:NSFontWeightMedium],
         NSForegroundColorAttributeName: busy ? NSColor.tertiaryLabelColor : NSColor.labelColor}];
     [_button refresh];
+    // Until Codex says whether you're signed in, show nothing rather than a sign-in screen that's about to vanish.
+    BOOL waiting = !service.signedIn && !service.checked && !service.problem;
+    BOOL wasWaiting = _tip.hidden && _title.hidden;
+    for (NSView *view in @[_title, _subtitle]) view.hidden = waiting;
+    if (waiting) _tip.hidden = _dismiss.hidden = _button.hidden = YES;
+    if (wasWaiting && !waiting && self.window) DPChatAppear(self.layer, 0.36, 0, 6);
+    if (waiting) return;
     NSArray<NSString *> *tip = DPChatTips()[_shown];
     [_tip showIcon:tip[0] label:tip[1] prompt:tip[2]];
     _tip.hidden = _dismiss.hidden = !service.signedIn || [DPChatDefaults() boolForKey:DPChatTipsHidden];

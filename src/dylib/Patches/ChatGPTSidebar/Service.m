@@ -5,7 +5,7 @@ NSNotificationName const DPChatServiceEvent = @"DPChatServiceEvent";
 
 @interface DPChatService ()
 @property(readwrite) DPChatClient *client;
-@property(readwrite) BOOL connecting, signedIn, signingIn;
+@property(readwrite) BOOL connecting, signedIn, signingIn, checked;
 @property(readwrite, copy) NSString *problem, *loginID;
 @end
 
@@ -46,6 +46,7 @@ NSNotificationName const DPChatServiceEvent = @"DPChatServiceEvent";
     [self.client request:@"account/read" params:@{} done:^(NSDictionary *result, NSString *error) {
         NSDictionary *account = [result[@"account"] isKindOfClass:NSDictionary.class] ? result[@"account"] : nil;
         weak.connecting = NO;
+        weak.checked = YES;
         weak.problem = error;
         weak.signedIn = [account[@"type"] isEqual:@"chatgpt"];
         [weak changed];

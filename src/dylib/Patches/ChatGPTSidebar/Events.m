@@ -5,6 +5,8 @@
 - (void)serviceEvent:(NSNotification *)note {
     NSString *method = note.userInfo[@"method"];
     NSDictionary *params = note.userInfo[@"params"];
+    static NSString *lastTraced;
+    if (![method isEqual:lastTraced]) DPChatTrace(method), lastTraced = method;
     if (!self.threadID || ![params[@"threadId"] isEqual:self.threadID] || !self.busy) return;
     DPChatMessage *last = self.messages.lastObject;
     if (!last || last.fromUser) return;
